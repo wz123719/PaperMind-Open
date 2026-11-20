@@ -1,0 +1,32 @@
+name: Windows checks
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: windows-2025
+    timeout-minutes: 25
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install pnpm
+        run: npm install --global pnpm@11.25.0
+      - name: Install and build from an empty workspace
+        run: .\setup.ps1
+      - name: Run backend tests
+        run: .\.venv\Scripts\python.exe -m pytest -q
+      - name: Verify startup and shutdown
+        run: .\start.ps1 -CheckOnly
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: startup-logs
+          path: storage/runtime-logs/
+          if-no-files-found: ignore
