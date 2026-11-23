@@ -40,13 +40,29 @@ def test_reading_full_workflow_reuses_and_binds_evidence(client):
     assert reading.submit(p['id'])['id']==r['id']
     assert reading.submit(p['id'],True)['id']!=r['id']
 
+def test_first_run_uses_deepseek_without_storing_or_exposing_credentials(client,monkeypatch):
+    from backend.reading_provider import credential
+    defaults = client.get('/v1/reading-settings').json()
+    assert defaults['configured'] and defaults['uses_default_model']
+    assert defaults['endpoint'] == 'https://api.deepseek.com/chat/completions'
+    assert defaults['model'] == 'deepseek-flash' and defaults['key_env'] == 'PAPERMIND_MODEL_API_KEY'
+    assert defaults['revision'] is None
+    monkeypatch.delenv('PAPERMIND_MODEL_API_KEY', raising=False)
+    with pytest.raises(ReadingFailure, match='凭据环境变量未配置'):
+        credential(defaults)
+    monkeypatch.setenv('PAPERMIND_MODEL_API_KEY','fixture-secret-for-default')
+    assert credential(defaults) == 'fixture-secret-for-default'
+    assert 'fixture-secret-for-default' not in client.get('/v1/reading-settings').text
+    assert 'fixture-secret-for-default' not in client.get('/v1/task-model-settings/translation').text
+
+
 def test_config_invalid_and_credentials_never_in_api(client,monkeypatch):
-    assert not client.get('/v1/reading-settings').json()['configured']
     for url in ['http://remote.invalid/api','https://u:secret@example.com/api','https://example.com/api?key=secret','file:///etc/x']:
         assert client.post('/v1/reading-settings',json={'endpoint':url,'model':'test'}).status_code==409
     p=ready(client)
     monkeypatch.setenv('PAPERMIND_TEST_SECRET','secret-not-for-output')
     client.post('/v1/reading-settings',json={'endpoint':'https://example.com/chat','model':'test','key_env':'PAPERMIND_TEST_SECRET'})
+    assert not client.get('/v1/reading-settings').json()['uses_default_model']
     r=client.post('/v1/parse-runs/'+p['id']+'/reading-runs',json={})
     assert r.status_code==202
     assert 'secret-not-for-output' not in r.text+client.get('/v1/reading-settings').text+client.get('/jobs/'+r.json()['job_id']).text

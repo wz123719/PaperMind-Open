@@ -35,7 +35,8 @@ def settings(task):
     if config:
         return {**config, 'source':'task'}
     workspace = workspace_model_settings()
-    return {**workspace, 'source':'workspace', 'workspace_revision':workspace['revision'], 'revision':None}
+    return {**workspace, 'source':'workspace', 'workspace_revision':workspace['revision'], 'revision':None,
+            'uses_default_model':workspace['revision'] is None}
 
 
 def configure(task, value):

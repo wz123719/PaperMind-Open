@@ -2,7 +2,7 @@ import {useEffect, useState} from 'react';
 import {api, type Region} from '../services/api';
 import {isKnowledgeReading, knowledgeReadingVersion, readingDate} from '../services/reading';
 
-type Config = {endpoint:string; model:string; key_env:string; configured?:boolean; knowledge_reading_enabled?:boolean};
+type Config = {endpoint:string; model:string; key_env:string; configured?:boolean; knowledge_reading_enabled?:boolean; uses_default_model?:boolean};
 type Run = {id:string; parse_run_id:string; job_id:string; status:string; error:string|null; pipeline_version:string;
   report_status?:string; created_at?:number; checkpoint:{message?:string; stages?:Record<string,string>}|null};
 type Evidence = {block_id:string; quote:string; matched:boolean; regions:Region[]};
@@ -99,10 +99,11 @@ export function ReadingPanel({parseId,fileId,onLocate,onNote,compact=false}:{par
       ?'综合精读已暂停，暂时无法生成或重试。'
       :'当前后端版本不支持综合精读，请更新并重启 PaperMind 服务。'}</p>}
     {!parseId&&<p>请先完成论文解析。</p>}{!config.configured&&!edit&&<p>首次使用，请先配置模型服务。</p>}
+    {config.uses_default_model&&<p>已预设 DeepSeek Flash。首次使用请在项目的 <code>.env</code> 填入自己的 DeepSeek API 密钥，再重启 PaperMind；无需保存模型配置。</p>}
     {edit&&<form className="reading-settings" onSubmit={settings}>
       <label>完整生成端点<input type="url" required placeholder="https://服务地址/v1/chat/completions" value={config.endpoint} onChange={e=>setConfig(c=>({...c,endpoint:e.target.value}))}/></label>
       <label>模型名称<input required value={config.model} onChange={e=>setConfig(c=>({...c,model:e.target.value}))}/></label>
-      <label>凭据环境变量名（可选）<input placeholder="PAPERMIND_LLM_API_KEY" value={config.key_env} onChange={e=>setConfig(c=>({...c,key_env:e.target.value}))}/></label>
+      <label>凭据环境变量名（可选）<input placeholder="PAPERMIND_MODEL_API_KEY" value={config.key_env} onChange={e=>setConfig(c=>({...c,key_env:e.target.value}))}/></label>
       <small>这里填写变量名。模型凭据从 Worker 的运行环境读取。</small><button disabled={busy}>保存模型配置</button>
     </form>}
     {error&&<p role="alert" className="error">{error}</p>}{notice&&<p role="status">{notice}</p>}

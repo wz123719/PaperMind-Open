@@ -8,7 +8,7 @@ from .db import (engine, write_tx, uid, emit, jobs, reading_runs, reading_stages
 from . import parsing
 from .files import LeaseLost
 from .queue import owned
-from .reading_provider import validate_config, complete, ReadingFailure
+from .reading_provider import DEEPSEEK_ENDPOINT, DEEPSEEK_MODEL, DEFAULT_KEY_ENV, validate_config, complete, ReadingFailure
 
 PROMPT_VERSION = 'reading-v1-evidence-2'
 EVIDENCE_CONTRACT = 'source-fragments-2'
@@ -30,7 +30,8 @@ def digest(value):
 def settings():
     with engine.connect() as conn:
         value = conn.execute(select(reading_settings.c.config).where(reading_settings.c.id == 'default')).scalar()
-    return value or {'endpoint': '', 'model': '', 'key_env': '', 'revision': None}
+    return value if value is not None else {'endpoint': DEEPSEEK_ENDPOINT, 'model': DEEPSEEK_MODEL,
+                                            'key_env': DEFAULT_KEY_ENV, 'revision': None}
 
 def configure(value):
     config = validate_config(value)
@@ -42,7 +43,8 @@ def configure(value):
 
 def public_settings():
     config = settings()
-    return {**config, 'configured': bool(config['endpoint'] and config['model'])}
+    return {**config, 'configured': bool(config['endpoint'] and config['model']),
+            'uses_default_model': config['revision'] is None}
 
 def submit(parse_id, force=False, options=None, retry_from=None):
     from . import knowledge_reading as knowledge

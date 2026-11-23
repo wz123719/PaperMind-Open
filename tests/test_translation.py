@@ -22,7 +22,30 @@ def provider(config,messages,cancelled):
     return json.dumps({'blocks':[{'source_block_id':b['source_block_id'],'text':'测试协议译文 '+''.join(TOKEN.findall(b['text']))} for b in reversed(data['targets'])]}),None
 
 
+def test_default_translation_uses_authenticated_deepseek_json(monkeypatch):
+    import httpx
+    from backend.translation_provider import complete
+    real_client = httpx.AsyncClient
+    monkeypatch.setenv('PAPERMIND_MODEL_API_KEY', 'mock-deepseek-key')
+
+    def respond(request):
+        assert request.url == httpx.URL('https://api.deepseek.com/chat/completions')
+        assert request.headers['Authorization'] == 'Bearer mock-deepseek-key'
+        body = json.loads(request.content)
+        assert body['model'] == 'deepseek-flash'
+        assert body['response_format'] == {'type':'json_object'}
+        assert body['thinking'] == {'type':'disabled'}
+        return httpx.Response(200,json={'choices':[{'message':{'content':'{"blocks":[]}'}}]})
+
+    monkeypatch.setattr(httpx, 'AsyncClient', lambda **kw:real_client(**kw,transport=httpx.MockTransport(respond)))
+    assert complete(t.settings('translation'), [{'role':'user','content':'Return JSON'}],lambda:False)[0] == '{"blocks":[]}'
+
+
 def test_workspace_model_default_and_task_override(client):
+    for task in ('translation', 'glossary'):
+        config = client.get(f'/v1/task-model-settings/{task}').json()
+        assert config['uses_default_model'] and config['model'] == 'deepseek-flash'
+        assert config['key_env'] == 'PAPERMIND_MODEL_API_KEY' and config['source'] == 'workspace'
     file = uploaded(client)
     parse = create(client, file['file_id'])
     run(parse)
@@ -31,6 +54,7 @@ def test_workspace_model_default_and_task_override(client):
     for task in ('translation', 'glossary'):
         configuration = client.get(f'/v1/task-model-settings/{task}').json()
         assert configuration['source'] == 'workspace' and configuration['revision'] is None
+        assert configuration['model'] == 'shared' and not configuration['uses_default_model']
         job = t.submit(parse['id'], 'full', [], f'shared-{task}', task=task)
         assert job['snapshot']['config']['model'] == 'shared'
         assert job['snapshot']['config']['settings_revision'] == shared['revision']
@@ -157,7 +181,8 @@ def test_term_extraction_requires_source_and_offsets():
 
 def test_api_no_credentials_and_settings_task_isolation(client):
     p,f=ready(client)
-    assert client.get('/v1/task-model-settings/glossary').json()['model']==''
+    glossary_config = client.get('/v1/task-model-settings/glossary').json()
+    assert glossary_config['model']=='deepseek-flash' and glossary_config['uses_default_model']
     assert client.post('/v1/task-model-settings/translation',json={'endpoint':'http://127.0.0.1:9999/chat','model':'configured','key_env':'TEST_ONLY_MISSING','expected_revision':t.settings('translation')['revision']}).status_code==200
     r=client.post('/v1/parse-runs/'+p['id']+'/translation-runs',json={'operation_key':'no-key'})
     assert r.status_code==202

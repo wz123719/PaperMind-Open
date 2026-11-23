@@ -7,6 +7,10 @@ import time
 from urllib.parse import urlsplit
 import httpx
 
+DEEPSEEK_ENDPOINT = 'https://api.deepseek.com/chat/completions'
+DEEPSEEK_MODEL = 'deepseek-flash'
+DEFAULT_KEY_ENV = 'PAPERMIND_MODEL_API_KEY'
+
 class ReadingFailure(ValueError):
     def __init__(self, message, *, usage=None):
         super().__init__(message)
@@ -34,6 +38,10 @@ def credential(config):
         raise ReadingFailure('模型凭据环境变量未配置，请配置后重启Worker')
     return value
 
+def is_deepseek_flash(config):
+    endpoint = urlsplit(config['endpoint'])
+    return endpoint.scheme == 'https' and endpoint.hostname == 'api.deepseek.com' and config['model'] == DEEPSEEK_MODEL
+
 async def _call(config, messages, cancelled):
     key = credential(config)
     headers = {'Content-Type': 'application/json'}
@@ -41,8 +49,7 @@ async def _call(config, messages, cancelled):
         headers['Authorization'] = 'Bearer ' + key
     payload = {'model': config['model'], 'messages': messages, 'temperature': 0.2,
                'max_tokens': 3000, 'stream': False}
-    endpoint = urlsplit(config['endpoint'])
-    if endpoint.scheme == 'https' and endpoint.hostname == 'api.deepseek.com' and config['model'] == 'deepseek-flash':
+    if is_deepseek_flash(config):
         payload.update(response_format={'type': 'json_object'}, thinking={'type': 'disabled'})
         payload['max_tokens'] = 6000
     if config.get('max_output_tokens') is not None:

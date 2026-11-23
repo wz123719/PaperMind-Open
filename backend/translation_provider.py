@@ -3,19 +3,21 @@ import asyncio
 import json
 import time
 import httpx
-from .reading_provider import ReadingFailure, credential
+from .reading_provider import ReadingFailure, credential, is_deepseek_flash
 
 async def _call(config, messages, cancelled):
     key = credential(config)
     headers = {'Content-Type': 'application/json'}
     if key:
         headers['Authorization'] = 'Bearer ' + key
+    payload = {'model':config['model'], 'messages':messages, 'temperature':0.2,
+               'max_tokens':3000, 'stream':False}
+    if is_deepseek_flash(config):
+        payload.update(response_format={'type':'json_object'}, thinking={'type':'disabled'})
     async def request():
         async with httpx.AsyncClient(timeout=httpx.Timeout(20, connect=10),
                                      follow_redirects=False, trust_env=False) as client:
-            async with client.stream('POST', config['endpoint'], headers=headers,
-                json={'model': config['model'], 'messages': messages,
-                      'temperature': 0.2, 'max_tokens': 3000, 'stream': False}) as response:
+            async with client.stream('POST', config['endpoint'], headers=headers, json=payload) as response:
                 if response.status_code != 200:
                     raise ReadingFailure(f'模型服务HTTP {response.status_code}；响应正文未记录')
                 raw = bytearray()

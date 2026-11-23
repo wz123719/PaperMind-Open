@@ -25,3 +25,7 @@ try {
     pnpm run build
     if ($LASTEXITCODE -ne 0) { throw 'Frontend build failed' }
 } finally { Pop-Location }
+if (!(Test-Path -LiteralPath '.env')) {
+    [IO.File]::Copy((Join-Path $PSScriptRoot '.env.example'),(Join-Path $PSScriptRoot '.env'))
+    Write-Host 'For AI reading or translation, fill in your DeepSeek API key in .env.'
+}

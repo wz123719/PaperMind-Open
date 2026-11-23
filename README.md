@@ -26,7 +26,7 @@ PaperMind 是面向研究者的 Windows 本地论文工作台。你可以导入�
 | --- | --- |
 | 章节、表格结构解析 | 默认安装已包含 Docling 和 PyTorch。首次使用结构解析前，再运行 `.\.venv\Scripts\python.exe setup-models.py` 下载模型权重。然后在界面选择「Docling 结构解析」。尚未安装公式增强时，先取消该选项。 |
 | 公式增强 | 额外运行 `.\.venv\Scripts\python.exe setup-math.py`；`setup-mineru-math.py` 是可选的数学识别备选。模型不会随源码 ZIP 分发。 |
-| 综合精读 / AI 翻译 | 准备自己的兼容 Chat Completions 服务。在相应页面填写完整端点和模型名。如果服务需要密钥，把 `.env.example` 复制为 `.env`，填入 `PAPERMIND_MODEL_API_KEY`，并在页面填写这个**变量名**，然后重启 `.\start.ps1`。 |
+| 综合精读 / AI 翻译 | 新安装默认使用 DeepSeek Flash，端点、模型名和凭据变量名已预设。打开安装生成的 `.env`，将自己的 DeepSeek API 密钥填在 `PAPERMIND_MODEL_API_KEY=` 后，重启 `.\start.ps1` 即可。旧目录没有 `.env` 时，可从 `.env.example` 复制。想换服务时再打开界面的「模型配置」。 |
 | 知识笔记 | 在综合报告点「保存为知识笔记」。笔记保存在本地，可复制 Markdown，也可在笔记工作台编辑。 |
 | Obsidian | 可选。到「知识笔记 → Vault 设置」填写自己的库文件夹，审核笔记后预览并确认发布。文件名默认取论文标题，同名会加编号。 |
 

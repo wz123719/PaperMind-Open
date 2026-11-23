@@ -2,7 +2,7 @@ import {useEffect,useRef,useState} from 'react';
 import {api,type Region,type Structure} from '../services/api';
 import {TranslationDocument,type TranslationResult as Result} from './TranslationDocument';
 
-type Model={endpoint:string;model:string;key_env:string;revision:string|null;source?:'workspace'|'task'};
+type Model={endpoint:string;model:string;key_env:string;revision:string|null;source?:'workspace'|'task';uses_default_model?:boolean};
 type Term={english:string;chinese:string;locked:boolean;priority:string};
 type Glossary={id:string|null;entries:Term[]};
 type RunItem={id:string;job_id:string;status:string;error:string|null;counts:Record<string,number>};
@@ -72,11 +72,12 @@ export function TranslationPanel({structure,paperId,onLocate,onDirty,bilingual=f
     <fieldset disabled={busy}>
       {!run&&<div className="translation-start">
         <p>{bilingual?'翻译整篇论文后，可在原文下方对照阅读中文译文。':'翻译完成后，中文译文会按论文顺序连续显示。'}</p>
+        {model.uses_default_model&&<p>默认使用 DeepSeek Flash。首次使用请在 <code>.env</code> 填入自己的 DeepSeek API 密钥并重启 PaperMind。</p>}
         <button type="button" className="primary" onClick={()=>void work(()=>submit([],'full',false,'translation'))}>翻译整篇论文</button>
       </div>}
       <details className="translation-controls"><summary>翻译设置与历史</summary>
       <label>任务类型<select aria-label="翻译任务类型" value={task} onChange={e=>setTask(e.target.value)}><option value="translation">学术翻译</option><option value="glossary">术语建议提取</option></select></label>
-      <p>{model.model ? `${model.source==='task'?'专用模型':'工作台默认模型'} · ${model.model}` : '请先在 AI 分章节精读中配置工作台默认模型。'}</p>
+      <p>{model.model ? `${model.source==='task'?'专用模型':'工作台默认模型'} · ${model.model}` : '请先在 AI 精读中配置工作台默认模型。'}</p>
       <details><summary>单独指定模型（可选）</summary>
         <label>模型端点<input aria-label="翻译模型端点" value={model.endpoint} onChange={e=>setModel({...model,endpoint:e.target.value})}/></label><label>模型名<input aria-label="翻译模型名" value={model.model} onChange={e=>setModel({...model,model:e.target.value})}/></label><label>Worker凭据环境变量名<input aria-label="翻译凭据变量" value={model.key_env} onChange={e=>setModel({...model,key_env:e.target.value})}/></label>
         <button onClick={()=>void work(async()=>setModel(await request<Model>('/task-model-settings/'+task,{...model,expected_revision:model.revision})))}>保存翻译模型设置</button><p>保存配置不会调用模型。支持非流式 Chat Completions JSON 协议。</p></details>
