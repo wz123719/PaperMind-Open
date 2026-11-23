@@ -1,7 +1,8 @@
 [CmdletBinding()]
-param([switch]$WithDocling)
+param([switch]$CoreOnly, [switch]$WithDocling)
 $ErrorActionPreference = 'Stop'
 Set-Location -LiteralPath $PSScriptRoot
+if ($CoreOnly -and $WithDocling) { throw 'Choose either -CoreOnly or -WithDocling.' }
 foreach ($tool in 'python','node','pnpm') {
     if (!(Get-Command $tool -ErrorAction SilentlyContinue)) { throw "Missing $tool. See README.md for setup requirements." }
 }
@@ -9,8 +10,13 @@ if (!(Test-Path -LiteralPath '.venv\Scripts\python.exe')) {
     python -m venv .venv
     if ($LASTEXITCODE -ne 0) { throw 'Python virtual environment creation failed' }
 }
-$lock = if ($WithDocling) { 'backend\requirements.lock.txt' } else { 'backend\requirements-core.lock.txt' }
-& '.\.venv\Scripts\python.exe' -m pip install --timeout 60 -r $lock
+$lock = if ($CoreOnly) { 'backend\requirements-core.lock.txt' } else { 'backend\requirements.lock.txt' }
+if ($CoreOnly) {
+    Write-Host 'Installing basic PDF reading dependencies.'
+} else {
+    Write-Host 'Installing PaperMind, Docling and PyTorch. The first download can take a while.'
+}
+& '.\.venv\Scripts\python.exe' -m pip install --timeout 120 --retries 5 -r $lock
 if ($LASTEXITCODE -ne 0) { throw 'Python dependency installation failed' }
 Push-Location frontend
 try {

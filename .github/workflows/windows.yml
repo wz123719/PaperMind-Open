@@ -6,6 +6,10 @@ jobs:
   verify:
     runs-on: windows-2025
     timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        install: [default, core-only]
     env:
       PYTHONUTF8: '1'
     steps:
@@ -19,7 +23,12 @@ jobs:
       - name: Install pnpm
         run: npm install --global pnpm@11.25.0
       - name: Install and build from an empty workspace
-        run: .\setup.ps1
+        run: |
+          if ('${{ matrix.install }}' -eq 'core-only') { .\setup.ps1 -CoreOnly }
+          else { .\setup.ps1 }
+      - name: Verify Docling and PyTorch imports
+        if: matrix.install == 'default'
+        run: .\.venv\Scripts\python.exe -c "import torch, torchvision; from docling.document_converter import DocumentConverter; print(torch.__version__)"
       - name: Run backend tests
         run: .\.venv\Scripts\python.exe -m pytest -q
       - name: Verify startup and shutdown
@@ -27,6 +36,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: startup-logs
+          name: startup-logs-${{ matrix.install }}
           path: storage/runtime-logs/
           if-no-files-found: ignore

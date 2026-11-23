@@ -10,4 +10,4 @@ PaperMind 的源码发布包不分发 Python/Node 依赖、模型权重、论文
 | MinerU | 可选的数学识别备选，见 [MinerU](https://github.com/opendatalab/MinerU)。 |
 | PDF.js | 浏览器 PDF 阅读器，见 [PDF.js](https://github.com/mozilla/pdf.js)。 |
 
-当前固定的依赖版本见 `backend/requirements-core.lock.txt`（基础安装）、`backend/requirements.lock.txt`（含 Docling）、`backend/math-runtime-requirements.lock.txt`、`backend/mineru-requirements.lock.txt` 和 `frontend/pnpm-lock.yaml`。如果另行制作用于分发的安装包，需针对实际打包进去的依赖和权重逐项核查许可证与随附声明。
+当前固定的依赖版本见 `backend/requirements.lock.txt`（默认安装，含 Docling 与 PyTorch）、`backend/requirements-core.lock.txt`（`-CoreOnly` 轻量安装）、`backend/math-runtime-requirements.lock.txt`、`backend/mineru-requirements.lock.txt` 和 `frontend/pnpm-lock.yaml`。如果另行制作用于分发的安装包，需针对实际打包进去的依赖和权重逐项核查许可证与随附声明。

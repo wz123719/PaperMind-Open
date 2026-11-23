@@ -106,7 +106,7 @@ def _docling_parse(path,rid,config,work,report,session):
         from docling.datamodel.pipeline_options import PdfPipelineOptions, TableFormerMode
         from docling.datamodel.accelerator_options import AcceleratorOptions, AcceleratorDevice
     except ImportError as exc:
-        raise parsing.ParseFailure('Docling 依赖不可用；请先运行 setup.ps1 -WithDocling 安装解析依赖。未自动降级。') from exc
+        raise parsing.ParseFailure('Docling 依赖不可用；请运行 setup.ps1 完成默认安装（不要选 -CoreOnly）。未自动降级。') from exc
     report({'stage':'docling','message':'Docling 正在识别版面、表格'+('与公式' if config['formulas'] else '（公式增强关闭）')})
     key = (bool(config['formulas']),config.get('model_manifest_sha256'),id(report))
     models=STORAGE/'models'/'docling-cache'/'models'
