@@ -99,19 +99,39 @@ def execute(job, worker, downloader=arxiv.download, parse_converter=None):
         temp.unlink(missing_ok=True)
 
 def main():
+    from .queue import LANES
     logging.basicConfig(level=logging.INFO)
     init_db()
     worker = uid()
     shutdown = threading.Event()
     signal.signal(signal.SIGINT, lambda *_: shutdown.set())
     signal.signal(signal.SIGTERM, lambda *_: shutdown.set())
-    log.info('Worker %s ready', worker)
+
+    def run_lane(lane_name, job_types):
+        lane_worker = f'{worker}:{lane_name}'
+        while not shutdown.is_set():
+            try:
+                job = claim(lane_worker, job_types=job_types)
+            except Exception:
+                log.exception('Claim failed on lane %s', lane_name)
+                shutdown.wait(1.0)
+                continue
+            if job:
+                execute(job, lane_worker)
+            else:
+                shutdown.wait(.4)
+
+    threads = [
+        threading.Thread(target=run_lane, args=(name, types), name=f'worker-{name}', daemon=True)
+        for name, types in LANES.items()
+    ]
+    for t in threads:
+        t.start()
+    log.info('Worker %s ready (lanes: %s)', worker, ','.join(LANES))
     while not shutdown.is_set():
-        job = claim(worker)
-        if job:
-            execute(job, worker)
-        else:
-            shutdown.wait(.5)
+        shutdown.wait(.5)
+    for t in threads:
+        t.join(timeout=5)
 
 if __name__ == '__main__':
     main()

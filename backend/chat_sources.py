@@ -132,6 +132,138 @@ def confirmed(rid,selection):
     if not candidate:raise ReadingFailure('来源候选无效、过期或语义不匹配，请重新映射并确认')
     return {'page_index':selection['page_index'],'text':selection['text'],**candidate}
 
+ZH_ACADEMIC_MAP = {
+    '摘要': ('abstract', 'summary', 'overview'),
+    '总结': ('abstract', 'conclusion', 'summary'),
+    '核心': ('key', 'core', 'main', 'central'),
+    '贡献': ('contribution', 'propose', 'novel', 'introduce'),
+    '创新': ('novel', 'contribution', 'propose'),
+    '背景': ('introduction', 'background', 'preliminary', 'related'),
+    '动机': ('motivation', 'challenge', 'problem', 'why'),
+    '问题': ('problem', 'challenge', 'formulation'),
+    '方法': ('method', 'methodology', 'approach', 'proposed'),
+    '架构': ('architecture', 'framework', 'structure', 'module', 'network'),
+    '模型': ('model', 'architecture', 'network'),
+    '框架': ('framework', 'pipeline', 'overview'),
+    '算法': ('algorithm', 'procedure', 'step'),
+    '公式': ('equation', 'formulation', 'loss', 'objective', 'function'),
+    '损失': ('loss', 'objective', 'criterion', 'regularization'),
+    '优化': ('optimization', 'optimizer', 'gradient', 'training', 'convergence'),
+    '梯度': ('gradient', 'backpropagation', 'derivative'),
+    '推导': ('derivation', 'proof', 'theorem', 'proposition', 'lemma'),
+    '定理': ('theorem', 'lemma', 'proposition', 'proof'),
+    '实验': ('experiment', 'evaluation', 'empirical', 'setup', 'result'),
+    '结果': ('result', 'performance', 'accuracy', 'score', 'comparison', 'table'),
+    '消融': ('ablation', 'component', 'variant', 'effect'),
+    '基线': ('baseline', 'benchmark', 'comparison', 'state', 'sota'),
+    '对比': ('comparison', 'outperform', 'baseline', 'table'),
+    '数据集': ('dataset', 'benchmark', 'corpus', 'split'),
+    '指标': ('metric', 'accuracy', 'error', 'precision', 'recall', 'f1', 'bleu'),
+    '超参数': ('hyperparameter', 'learning', 'rate', 'batch', 'epoch', 'schedule'),
+    '训练': ('training', 'train', 'epoch', 'batch', 'optimizer'),
+    '推理': ('inference', 'decoding', 'latency', 'speed', 'throughput'),
+    '效率': ('efficiency', 'complexity', 'runtime', 'memory', 'speed', 'cost'),
+    '复杂度': ('complexity', 'computational', 'memory', 'time'),
+    '局限': ('limitation', 'weakness', 'drawback', 'failure', 'future', 'discussion'),
+    '缺点': ('limitation', 'weakness', 'drawback'),
+    '未来': ('future', 'direction', 'conclusion', 'discussion'),
+    '复现': ('implementation', 'code', 'reproduce', 'detail', 'setup'),
+    '注意力': ('attention', 'self-attention', 'transformer'),
+    '编码': ('encoder', 'encoding', 'representation', 'embedding'),
+    '解码': ('decoder', 'decoding', 'generation'),
+    '特征': ('feature', 'representation', 'embedding'),
+    '泛化': ('generalization', 'domain', 'robustness', 'transfer'),
+    '微调': ('fine-tuning', 'finetuning', 'adaptation'),
+    '预训练': ('pre-training', 'pretraining', 'pretrained'),
+    '蒸馏': ('distillation', 'teacher', 'student'),
+    '采样': ('sampling', 'sample', 'distribution'),
+    '表格': ('table', 'result', 'comparison'),
+    '图': ('figure', 'architecture', 'illustration'),
+}
+
+
+def _expand_cross_lingual_terms(question: str) -> tuple[set[str], set[str], bool]:
+    en_terms = set(re.findall(r'[A-Za-z0-9_]{2,}', question.lower()))
+    zh_terms = set()
+    has_zh = False
+    for segment in re.findall(r'[\u4e00-\u9fff]+', question):
+        has_zh = True
+        if len(segment) == 1:
+            zh_terms.add(segment)
+        else:
+            zh_terms.update(segment[i:i+2] for i in range(len(segment) - 1))
+    expanded_en = set()
+    for zh_key, mapped in ZH_ACADEMIC_MAP.items():
+        if zh_key in question:
+            expanded_en.update(mapped)
+    return en_terms | expanded_en, zh_terms, has_zh
+
+
+def _llm_expand_keywords(question: str) -> set[str]:
+    """Optional fast cross-lingual keyword expansion when an active credential is available."""
+    import json
+    import httpx
+    from . import dpapi, reading
+    from .llm_provider import strip_json_fence, trust_system_proxy
+    cfg = reading.settings()
+    endpoint = (cfg.get('endpoint') or '').strip()
+    if not endpoint or any(h in endpoint for h in ('127.0.0.1:9999', 'localhost:9999', 'localhost/')):
+        return set()
+    key = dpapi.load_secret('workspace') or (__import__('os').getenv(cfg.get('key_env') or '', ''))
+    if cfg.get('key_env') and not key:
+        return set()
+    headers = {'Content-Type': 'application/json'}
+    if key:
+        headers['Authorization'] = 'Bearer ' + key
+    prompt = (
+        'Extract 4 to 8 concise English academic search keywords/phrases for retrieving relevant '
+        'paragraphs from an English research paper to answer the user question. '
+        'Return strict JSON only: {"keywords":["term1","term2"]}.'
+    )
+    try:
+        with httpx.Client(timeout=httpx.Timeout(4.0, connect=2.0), follow_redirects=False,
+                          trust_env=trust_system_proxy(cfg)) as client:
+            resp = client.post(endpoint, headers=headers, json={
+                'model': cfg['model'],
+                'messages': [{'role': 'system', 'content': prompt}, {'role': 'user', 'content': question[:500]}],
+                'max_tokens': 120, 'temperature': 0.0, 'stream': False,
+            })
+            if resp.status_code != 200:
+                return set()
+            raw = resp.json()['choices'][0]['message']['content']
+            kws = json.loads(strip_json_fence(raw)).get('keywords', [])
+            out = set()
+            for kw in kws[:10]:
+                if isinstance(kw, str):
+                    out.update(re.findall(r'[A-Za-z0-9_-]{2,}', kw.lower()))
+            return out
+    except Exception:
+        return set()
+
+
+def _fts5_bm25_scores(blocks: list[dict], titles: dict[str, str], query_terms: set[str]) -> dict[str, float]:
+    import sqlite3
+    safe_tokens = [re.sub(r'[^A-Za-z0-9_]', '', t) for t in query_terms]
+    safe_tokens = [t for t in safe_tokens if len(t) >= 2][:24]
+    if not safe_tokens or not blocks:
+        return {}
+    conn = sqlite3.connect(':memory:')
+    try:
+        conn.execute("CREATE VIRTUAL TABLE docs USING fts5(bid UNINDEXED, sec, body, tokenize='porter unicode61')")
+        conn.executemany(
+            'INSERT INTO docs(bid, sec, body) VALUES (?, ?, ?)',
+            [(b['id'], titles.get(b.get('section_id'), ''), b['text']) for b in blocks if b.get('regions') and b['text'].strip()],
+        )
+        fts_query = ' OR '.join(f'"{t}"' for t in dict.fromkeys(safe_tokens))
+        rows = conn.execute('SELECT bid, bm25(docs, 0.0, 2.5, 1.0) FROM docs WHERE docs MATCH ? ORDER BY 2 LIMIT 24', (fts_query,)).fetchall()
+        # sqlite bm25() returns negative values where more negative = stronger match
+        return {bid: max(0.5, -float(score)) for bid, score in rows}
+    except sqlite3.OperationalError:
+        return {}
+    finally:
+        conn.close()
+
+
 def context(doc,question,selection=None):
     blocks={b['id']:b for b in doc['blocks']};rid=doc['run']['id'];source=[]
     def add(item,required=False):
@@ -148,20 +280,33 @@ def context(doc,question,selection=None):
             add(fragment(b,max(0,item['start']-350),item['start'],rid))
             add(fragment(b,item['end'],min(len(b['text']),item['end']+350),rid))
         return source,{'version':SOURCE_VERSION,'mode':'selection_with_separate_neighbors','hits':len(source)}
-    terms=set(re.findall(r'[A-Za-z0-9_]{2,}',question.lower()))
-    for segment in re.findall(r'[\u4e00-\u9fff]+',question):
-        terms.update(segment[i:i+2] for i in range(len(segment)-1))
-    titles={s['id']:s['title'].lower() for s in doc['sections']}
+    en_terms, zh_terms, has_zh = _expand_cross_lingual_terms(question)
+    titles = {s['id']: s['title'].lower() for s in doc['sections']}
+    bm25 = _fts5_bm25_scores(doc['blocks'], titles, en_terms)
+    if has_zh and len(bm25) < 3:
+        extra_en = _llm_expand_keywords(question)
+        if extra_en - en_terms:
+            en_terms |= extra_en
+            bm25 = _fts5_bm25_scores(doc['blocks'], titles, en_terms)
+    terms = en_terms | zh_terms
+    wants_formula = any(k in question for k in ('公式', '损失', '推导', 'equation', 'formula', 'loss'))
+    wants_table = any(k in question for k in ('实验', '结果', '消融', '对比', '指标', '表格', 'table', 'ablation', 'result'))
     scored=[]
     for block in doc['blocks']:
+        if not block.get('regions') or not block['text'].strip():
+            continue
         lowered=block['text'].lower()
         hits=[term for term in terms if term in lowered]
-        score=sum(min(lowered.count(term),3) for term in hits)+sum(2 for t in terms if t in titles.get(block['section_id'],''))
-        if score and block['regions']:
+        lex_score=sum(min(lowered.count(term),3) for term in hits)+sum(2 for t in terms if t in titles.get(block['section_id'],''))
+        fts_score=bm25.get(block['id'], 0.0) * 2.5
+        kind_bonus=(2.0 if wants_formula and block['type']=='formula' and (lex_score or fts_score) else 0.0) + (
+                    2.0 if wants_table and block['type']=='table' and (lex_score or fts_score) else 0.0)
+        total_score=lex_score + fts_score + kind_bonus
+        if total_score > 0:
             first=min((lowered.find(t) for t in hits),default=0)
-            scored.append((-score,block['reading_order'],block,max(0,first-350)))
-    for _,_,block,start in sorted(scored,key=lambda x:(x[0],x[1]))[:8]:
+            scored.append((-total_score,block['reading_order'],block,max(0,first-350)))
+    for _,_,block,start in sorted(scored,key=lambda x:(x[0],x[1]))[:10]:
         add(fragment(block,start,min(len(block['text']),start+1600),rid))
-    return source,{'version':SOURCE_VERSION,'mode':'paper_local_lexical','terms':sorted(terms),
+    return source,{'version':SOURCE_VERSION,'mode':'cross_lingual_fts5_hybrid','terms':sorted(terms),
                    'hits':len(source),'status':'matched' if source else 'no_hits',
                    'scope':'仅本次检索片段，不代表阅读全文'}

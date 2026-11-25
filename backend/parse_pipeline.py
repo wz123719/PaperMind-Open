@@ -85,6 +85,15 @@ def docling_parse(path, rid, config, work, report):
             session=RapidSession(work,config,source_path=path)
             session.source_document=source_document
         result=_docling_parse(path,rid,config,work,report,session)
+        if source_document.get('status')=='available' and session is None:
+            from .source_adapter import match_math
+            for b in result['blocks']:
+                if b['type']=='formula' and b.get('text'):
+                    matched=match_math(source_document,b['text'])
+                    if matched and not matched.get('checks'):
+                        b['text']=matched['normalized_latex']
+                        b['data'].setdefault('math',{})['latex']=matched['normalized_latex']
+                        b['data']['math'].setdefault('candidates',[]).append(matched)
         result['source_document']=align_document(source_document,result['blocks'])
         if source_document['status']!='available':result['warnings'].append('源文件路线未使用：'+source_document.get('reason',source_document['status'])+'；执行PDF路线。')
         if session is not None:
@@ -128,7 +137,10 @@ def _docling_parse(path,rid,config,work,report,session):
         options.generate_page_images = True
         options.images_scale = 1.0
         options.document_timeout = 1200
-        options.accelerator_options = AcceleratorOptions(num_threads=4, device=AcceleratorDevice.CPU)
+        import torch
+        dev = AcceleratorDevice.CUDA if torch.cuda.is_available() else AcceleratorDevice.CPU
+        threads = min(8, max(4, (os.cpu_count() or 4)))
+        options.accelerator_options = AcceleratorOptions(num_threads=threads, device=dev)
         from .parse_progress import progress_pipeline
         records={}
         _converters[key] = (DocumentConverter(format_options={InputFormat.PDF: PdfFormatOption(
@@ -321,7 +333,7 @@ def execute_parse(job, worker, report, converter=None):
         raise parsing.ParseFailure('模型清单已变化，请创建新的解析运行以保持版本绑定')
     if run['parser']=='docling' and run['config'].get('adapter_sha256')!=parsing.adapter_hash():
         raise parsing.ParseFailure('解析适配器已变化，请创建新的解析运行')
-    if run['parser']=='docling' and run['config']['formulas'] and run['config'].get('math_manifest_sha256')!=parsing.math_manifest_hash():
+    if run['parser']=='docling' and run['config']['formulas'] and run['config'].get('formula_backend')!='CodeFormulaV2' and run['config'].get('math_manifest_sha256')!=parsing.math_manifest_hash():
         raise parsing.ParseFailure('数学增强清单已变化，请创建新的解析运行')
     descriptor=run['config'].get('source',{})
     if descriptor.get('status')=='available':

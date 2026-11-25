@@ -9,14 +9,22 @@ ADOBE_PUA={'bracketlefttp':'\uf8ee','bracketleftex':'\uf8ef','bracketleftbt':'\u
 CMEX_ENCODING={0:'parenleftbig',1:'parenrightbig',16:'parenleftBig',17:'parenrightBig',
     18:'parenleftbigg',19:'parenrightbigg',20:'bracketleftbigg',21:'bracketrightbigg',
     32:'parenleftBigg',33:'parenrightBigg',34:'bracketleftBigg',35:'bracketrightBigg',
-    80:'summationtext',88:'summationdisplay',98:'hatwide',112:'radicalbig',113:'radicalBig',115:'radicalBigg'}
+    72:'contintegraltext',73:'contintegraldisplay',80:'summationtext',81:'producttext',
+    82:'integraltext',88:'summationdisplay',89:'productdisplay',90:'integraldisplay',
+    98:'hatwide',101:'tildewide',112:'radicalbig',113:'radicalBig',115:'radicalBigg'}
 
 GLYPHS={'summationdisplay':r'\sum','summationtext':r'\sum','productdisplay':r'\prod',
-    'producttext':r'\prod','hatwide':r'\widehat','tildewide':r'\widetilde'}
+    'producttext':r'\prod','integraldisplay':r'\int','integraltext':r'\int',
+    'contintegraldisplay':r'\oint','contintegraltext':r'\oint',
+    'hatwide':r'\widehat','tildewide':r'\widetilde'}
 UNICODE={'α':r'\alpha','β':r'\beta','γ':r'\gamma','θ':r'\theta','Θ':r'\Theta','ϵ':r'\epsilon',
     'ε':r'\varepsilon','Φ':r'\Phi','φ':r'\phi','∆':r'\Delta','Δ':r'\Delta','λ':r'\lambda',
-    '∈':r'\in','∇':r'\nabla','∞':r'\infty','≤':r'\le','≥':r'\ge','−':'-',
-    '·':r'\cdot','×':r'\times','←':r'\leftarrow','→':r'\rightarrow','∑':r'\sum','√':r'\sqrt',
+    '∈':r'\in','∉':r'\notin','∇':r'\nabla','∂':r'\partial','∞':r'\infty','≤':r'\le','≥':r'\ge','−':'-',
+    '·':r'\cdot','×':r'\times','←':r'\leftarrow','→':r'\rightarrow','⇒':r'\Rightarrow','⇐':r'\Leftarrow','⇔':r'\Leftrightarrow',
+    '∑':r'\sum','∏':r'\prod','∫':r'\int','∮':r'\oint','√':r'\sqrt','∀':r'\forall','∃':r'\exists','∅':r'\emptyset',
+    '≈':r'\approx','≠':r'\neq','∼':r'\sim','≃':r'\simeq','∝':r'\propto','±':r'\pm','∓':r'\mp',
+    '⊂':r'\subset','⊆':r'\subseteq','⊃':r'\supset','⊇':r'\supseteq','∩':r'\cap','⊕':r'\oplus','⊗':r'\otimes',
+    '⟨':r'\langle','⟩':r'\rangle','⌊':r'\lfloor','⌋':r'\rfloor','⌈':r'\lceil','⌉':r'\rceil',
     '∥':r'\Vert','‖':r'\Vert','{':r'\{','}':r'\}','⊙':r'\odot'}
 UNICODE.update({'δ':r'\delta','ζ':r'\zeta','η':r'\eta','ι':r'\iota','κ':r'\kappa','μ':r'\mu',
     'ν':r'\nu','ξ':r'\xi','π':r'\pi','ρ':r'\rho','σ':r'\sigma','τ':r'\tau','υ':r'\upsilon',
@@ -232,7 +240,7 @@ def latex(chars,*,base=None,bars=()):
 
 
 def is_math(c):
-    return bool(re.match(r'^(CM|MSAM|MSBM|STIX|Math)',c['font']))
+    return bool(re.match(r'^(CM|MSAM|MSBM|STIX|Math|LatinModernMath|LMMath|NewTX|Libertine.*Math|CambriaMath|Asana)',c['font']))
 
 
 def formatted_line(chars,bars=()):

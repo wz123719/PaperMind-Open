@@ -11,10 +11,58 @@ TITLES = (
 )
 MISSING = '当前精读报告未提供足够信息。'
 
+PROTECTED_INLINE = re.compile(
+    r'(\$\$[\s\S]*?\$\$|(?<!\\)\$(?:\\.|[^$\n])+?\$|`[^`\n]+`|\*\*[^*\n]+\*\*)'
+)
 
-def prose(value):
-    # Prevent source/model text from introducing headings, links, images, or tables.
-    return re.sub(r'([\\`*_[\]<>|])', r'\\\1', ' '.join(str(value).split()))
+
+def normalize_math_delimiters(value: str) -> str:
+    text = str(value or '')
+    text = re.sub(r'\\\[([\s\S]*?)\\\]', lambda m: f'$$ {m.group(1).strip()} $$', text)
+    text = re.sub(r'\\\(([\s\S]*?)\\\)', lambda m: f'${m.group(1).strip()}$', text)
+    return text
+
+
+def prose(value, *, in_table: bool = False):
+    """Preserve inline LaTeX ($...$), code (`...`), and bold (**...**) for Obsidian rendering."""
+    raw = ' '.join(normalize_math_delimiters(value).split())
+    parts = []
+    pos = 0
+    for m in PROTECTED_INLINE.finditer(raw):
+        if m.start() > pos:
+            parts.append(_escape_plain(raw[pos:m.start()], in_table=in_table))
+        token = m.group(0)
+        if in_table and '|' in token:
+            if token.startswith('$'):
+                token = token.replace('|', r'\vert ')
+            else:
+                token = token.replace('|', r'\|')
+        parts.append(token)
+        pos = m.end()
+    if pos < len(raw):
+        parts.append(_escape_plain(raw[pos:], in_table=in_table))
+    return ''.join(parts)
+
+
+def _escape_plain(segment: str, *, in_table: bool = False) -> str:
+    # Prevent raw HTML injection or accidental markdown links/images in plain prose
+    # while keeping citations like [1] and underscores readable.
+    out = segment.replace('<', '&lt;').replace('>', '&gt;')
+    out = re.sub(r'(!?\[[^\]]*\]\()', lambda m: '\\' + m.group(1), out)
+    if in_table:
+        out = out.replace('|', r'\|')
+    return out
+
+
+def clean_display_latex(latex: str) -> str:
+    s = latex.strip()
+    if s.startswith(r'\[') and s.endswith(r'\]'):
+        s = s[2:-2].strip()
+    elif s.startswith('$$') and s.endswith('$$') and len(s) >= 4:
+        s = s[2:-2].strip()
+    elif s.startswith('$') and s.endswith('$') and len(s) >= 2 and not s.startswith('$$'):
+        s = s[1:-1].strip()
+    return s
 
 
 def paper_link(meta):
@@ -39,10 +87,10 @@ def render(report, metadata):
         return [c for c in by_stage.get(key, {}).get('claims', [])
                 if not categories or c.get('category') in categories]
 
-    def text(claim):
-        status = {'inferred':'推断', 'unsupported':'证据不足', 'conflicted':'存在冲突'}
-        label = status.get(claim['verification'], '推断' if claim['kind']=='inference' else None)
-        return prose(claim['text']) + (f'（{label}）' if label else '')
+    def text(claim, *, in_table: bool = False):
+        status = {'inferred': '推断', 'unsupported': '证据不足', 'conflicted': '存在冲突'}
+        label = status.get(claim['verification'], '推断' if claim['kind'] == 'inference' else None)
+        return prose(claim['text'], in_table=in_table) + (f'（{label}）' if label else '')
 
     def pages(claim):
         ids = sorted({r['page_index'] + 1 for e in claim.get('evidence', []) if e.get('matched')
@@ -57,7 +105,7 @@ def render(report, metadata):
         if not rows:
             return MISSING
         return '\n'.join(['| 类型 | 内容 | 原文位置 |', '| --- | --- | --- |',
-                          *(f'| {prose(c["topic"])} | {text(c)} | {pages(c)} |' for c in rows)])
+                          *(f'| {prose(c["topic"], in_table=True)} | {text(c, in_table=True)} | {pages(c)} |' for c in rows)])
 
     def part(sid, title, body, linked=()):
         ids = list(dict.fromkeys(c['id'] for c in linked))
@@ -93,38 +141,35 @@ def render(report, metadata):
             if not latex or f['id'] in seen:
                 continue
             seen.add(f['id'])
-            latex = latex.strip()
-            if latex.startswith(r'\[') and latex.endswith(r'\]'):
-                latex = latex[2:-2].strip()
-            # A fenced code block preserves literal parser output, even for malformed LaTeX.
-            fence = '`' * (max([2] + [len(m) for m in re.findall(r'`+', latex)]) + 1)
-            formula_lines.append(f'{fence}latex\n{latex}\n{fence}')
+            cleaned = clean_display_latex(latex)
+            if cleaned:
+                formula_lines.append(f'$$\n{cleaned}\n$$')
     experiment = by_stage.get('experiment')
     no_experiment = experiment is not None and experiment.get('applicable') is False
     experiment_note = '综合精读报告将实验标为不适用。'
     references = []
     if source != '未提供公开链接':
-        references.append('- '+source)
-    references.append('- PaperMind 绑定的原始论文 PDF（导出时附离线来源链接）。')
+        references.append('- ' + source)
+    references.append('- PaperMind 绑定的原始论文 PDF（导出时可按需附离线来源链接）。')
     if report.get('warnings'):
-        references.extend(['', '### 核验提示', '', *('- '+prose(w) for w in report['warnings'])])
+        references.extend(['', '### 核验提示', '', *('- ' + prose(w) for w in report['warnings'])])
     body = [
         (info, []),
-        ('### 2.1 研究背景与问题\n\n'+items(background)+'\n\n### 2.2 前置知识\n\n'+items(prereq), background+prereq),
+        ('### 2.1 研究背景与问题\n\n' + items(background) + '\n\n### 2.2 前置知识\n\n' + items(prereq), background + prereq),
         (table(contributions), contributions),
         (items(architecture), architecture),
         (items(algorithms, ordered=True), algorithms),
         ('\n\n'.join([items(algorithm_formulas), *formula_lines]), algorithm_formulas),
         (experiment_note if no_experiment else items(design), design),
         (experiment_note if no_experiment else table(results), results),
-        ('### 优势\n\n'+items(contributions)+'\n\n### 局限与适用条件\n\n'+items(limits), contributions+limits),
+        ('### 优势\n\n' + items(contributions) + '\n\n### 局限与适用条件\n\n' + items(limits), contributions + limits),
         ('- **官方代码**：当前报告未核实。\n- **代码许可**：当前报告未核实。', []),
-        ('可作为复现时的核对项；当前报告未验证生产环境中的表现。\n\n'+items(implementation), implementation),
-        ('> [!important] 最值得记住的要点\n'+('\n'.join(f'> {i}. {text(c)}' for i,c in enumerate(review,1)) if review else '> '+MISSING), review),
+        ('可作为复现时的核对项；当前报告未验证生产环境中的表现。\n\n' + items(implementation), implementation),
+        ('> [!important] 最值得记住的要点\n' + ('\n'.join(f'> {i}. {text(c)}' for i, c in enumerate(review, 1)) if review else '> ' + MISSING), review),
         ('_待手动添加关联笔记。_', []),
         ('\n'.join(references), []),
     ]
     abstract = overview[:1] or contributions[:1]
-    return [part('s00','一句话总结','> [!abstract] 一句话总结\n> '+(text(abstract[0]) if abstract else MISSING),abstract),
-            *(part(f's{i:02d}',f'{i}. {title}',content,linked)
-              for i,(title,(content,linked)) in enumerate(zip(TITLES,body),1))]
+    return [part('s00', '一句话总结', '> [!abstract] 一句话总结\n> ' + (text(abstract[0]) if abstract else MISSING), abstract),
+            *(part(f's{i:02d}', f'{i}. {title}', content, linked)
+              for i, (title, (content, linked)) in enumerate(zip(TITLES, body), 1))]

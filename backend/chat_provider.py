@@ -20,6 +20,8 @@ class Records:
             line,self.buffer=self.buffer.split('\n',1)
             if line.strip():self.record(line)
     def record(self,line):
+        stripped=line.strip()
+        if stripped.startswith('```'):return
         if self.ended:raise ReadingFailure('模型结束记录后仍发送正文')
         try:
             data=json.loads(line)
@@ -65,7 +67,8 @@ async def _stream(config,messages,emit,cancelled):
             except (ValueError,KeyError,IndexError,TypeError) as exc:
                 if isinstance(exc,ReadingFailure):raise
                 raise ReadingFailure('模型SSE帧无效或输出被截断') from None
-        async with httpx.AsyncClient(timeout=httpx.Timeout(20,connect=10),follow_redirects=False,trust_env=False) as client:
+        from .llm_provider import trust_system_proxy
+        async with httpx.AsyncClient(timeout=httpx.Timeout(95.0,connect=10.0),follow_redirects=False,trust_env=trust_system_proxy(config)) as client:
             async with client.stream('POST',config['endpoint'],headers=headers,
                 json={'model':config['model'],'messages':messages,'stream':True,'temperature':.2,'max_tokens':4000}) as response:
                 if response.status_code!=200:raise ReadingFailure(f'模型服务HTTP {response.status_code}；响应正文未记录')

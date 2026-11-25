@@ -82,7 +82,10 @@ def stop_owned(proc,job):
         except ProcessLookupError:pass
     if proc.poll() is None:
         proc.kill()
-    proc.wait(timeout=5)
+    try:
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        pass
 
 
 def parent_pipe_guard():

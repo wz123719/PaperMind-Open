@@ -22,9 +22,9 @@ def normalize(term):
 
 
 def protect(text, entries):
-    nonce = uuid.uuid4().hex
+    nonce = uuid.uuid4().hex[:6]
     while nonce in text:
-        nonce = uuid.uuid4().hex
+        nonce = uuid.uuid4().hex[:6]
     mapping = {}
     def token(value):
         key = f'⟦PM:{nonce}:{len(mapping)}⟧'

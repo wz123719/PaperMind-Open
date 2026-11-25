@@ -13,13 +13,10 @@ from .files import LeaseLost
 CONFIG_VERSION = 'structure-v8-r4'
 MODES = {'docling', 'native'}
 
+ADAPTER_VERSION = 'structure-adapter-r5'
+
 def adapter_hash():
-    root=Path(__file__).resolve().parent
-    names=['local_math_backend.py','native_math.py','math_regions.py','inline_math.py','math_structure.py',
-           'object_cache.py','tex_source.py','source_files.py','source_adapter.py','table_structure.py','structure_refinement.py','parse_progress.py','parse_pipeline.py',
-           'mineru_math.py','mineru_math_child.py','source_tables.py','figure_structure.py','figure_panels.py',
-           'pdf_rules.py','algorithm_layout.py','reading_layout.py','math_layout_checks.py']
-    return hashlib.sha256(b''.join(name.encode()+b'\0'+(root/name).read_bytes() for name in names)).hexdigest()
+    return hashlib.sha256(ADAPTER_VERSION.encode('utf-8')).hexdigest()
 
 class ParseFailure(ValueError):
     """Known, safe-to-display parse failure; third-party exceptions stay in logs."""
@@ -48,9 +45,13 @@ def submit(fid, mode='docling', force=False, formulas=True, source_preferred=Tru
     limit=float(os.getenv('PAPERMIND_PARSE_TIMEOUT_SECONDS','1200'))
     if not 0<limit<=86400:raise ValueError('解析全流程硬超时必须在0至86400秒之间')
     if mode=='docling':config['wall_timeout_seconds']=limit
-    if mode=='docling':config.update(formula_backend='pdf_math_layout+RapidLaTeXOCR',formula_backend_version='0.0.9',
-        math_manifest_sha256=math_manifest_hash() if formulas else None,structure_refinement='r1',pdf_math_layout_version=2,
-        math_selection='supported_pdf_graph_else_image_candidate')
+    if mode=='docling':
+        rapid_ready = (STORAGE/'evaluation/latex-env'/('Scripts/python.exe' if os.name=='nt' else 'bin/python')).is_file() and (STORAGE/'evaluation/rapid-models/manifest.json').is_file()
+        backend_choice = 'pdf_math_layout+RapidLaTeXOCR' if rapid_ready and os.getenv('PAPERMIND_PREFER_RAPID_MATH')=='1' else 'CodeFormulaV2'
+        config.update(formula_backend=backend_choice,formula_backend_version='2.0' if backend_choice=='CodeFormulaV2' else '0.0.9',
+            math_manifest_sha256=math_manifest_hash() if (formulas and backend_choice!='CodeFormulaV2') else None,
+            structure_refinement='r1',pdf_math_layout_version=2,
+            math_selection='source_then_code_formula_v2' if backend_choice=='CodeFormulaV2' else 'supported_pdf_graph_else_image_candidate')
     if mode=='docling':
         from .source_files import registration
         from .mineru_math import manifest_hash

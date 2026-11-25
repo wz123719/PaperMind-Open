@@ -34,16 +34,23 @@ def settings():
                                             'key_env': DEFAULT_KEY_ENV, 'revision': None}
 
 def configure(value):
+    from . import dpapi
     config = validate_config(value)
+    if value.get('clear_api_key'):
+        dpapi.delete_secret('workspace')
+    elif value.get('api_key') and str(value['api_key']).strip():
+        dpapi.save_secret('workspace', str(value['api_key']))
     config['revision'] = uid()
     with write_tx() as conn:
         conn.execute(reading_settings.delete().where(reading_settings.c.id == 'default'))
         conn.execute(reading_settings.insert().values(id='default', config=config))
-    return config
+    return public_settings()
 
 def public_settings():
+    from . import dpapi
     config = settings()
-    return {**config, 'configured': bool(config['endpoint'] and config['model']),
+    return {**config, **dpapi.secret_metadata('workspace'),
+            'configured': bool(config['endpoint'] and config['model']),
             'uses_default_model': config['revision'] is None}
 
 def submit(parse_id, force=False, options=None, retry_from=None):
@@ -126,9 +133,16 @@ def list_runs(parse_id):
     if not parsing.get_run(parse_id):
         raise LookupError('解析运行不存在')
     with engine.connect() as conn:
-        ids = conn.execute(select(reading_runs.c.id).where(reading_runs.c.parse_run_id == parse_id)
-                           .order_by(reading_runs.c.created_at.desc())).scalars().all()
-    return [public_run(get_run(rid)) for rid in ids]
+        rows = conn.execute(select(
+            reading_runs.c.id, reading_runs.c.parse_run_id, reading_runs.c.job_id,
+            reading_runs.c.input_hash, reading_runs.c.config, reading_runs.c.created_at,
+            reading_runs.c.completed_at, reading_runs.c.result['status'].as_string().label('report_status'),
+            jobs.c.status, jobs.c.error, jobs.c.checkpoint, jobs.c.attempts, jobs.c.max_attempts
+        ).join(jobs, reading_runs.c.job_id == jobs.c.id)
+         .where(reading_runs.c.parse_run_id == parse_id)
+         .order_by(reading_runs.c.created_at.desc())).mappings().all()
+    from . import knowledge_reading as knowledge
+    return [{**dict(r), 'pipeline_version': r['config'].get('pipeline_version', knowledge.LEGACY)} for r in rows]
 
 def report(rid):
     run = get_run(rid)
@@ -181,10 +195,11 @@ def plan(doc):
     return stages
 
 def validate_output(raw, blocks, source, parse_run_id, *, whole_short_formula=False):
+    from .llm_provider import strip_json_fence
     if not isinstance(raw, str) or len(raw) > 100_000:
         raise ReadingFailure('模型输出为空或超出结构限制')
     try:
-        data = json.loads(raw)
+        data = json.loads(strip_json_fence(raw))
     except json.JSONDecodeError:
         raise ReadingFailure('模型正文不是有效 JSON，未发布精读报告') from None
     try:

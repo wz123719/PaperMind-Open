@@ -161,14 +161,19 @@ def execute(job,worker,cancelled,provider=stream):
         own(c);c.execute(chat_messages.update().where(chat_messages.c.id==row['assistant_message_id'])
             .values(status='draft',content='',data={'attempt':attempt,'verification':'draft'}))
         event(c,row['id'],attempt,'start',{'message_id':row['assistant_message_id'],'reset':True,'verification':'draft'})
-    content=[];claims=[];start=time.monotonic()
+    content=[];claims=[];start=time.monotonic();last_msg_sync=[0.0]
     def consume(record):
         if time.monotonic()-start>180:raise ReadingFailure('问答尝试超过180秒预算')
         if record['type']=='text':
             value=record['text'];content.append(value)
+            now_m=time.monotonic()
+            sync_body=(last_msg_sync[0]==0.0 or now_m-last_msg_sync[0]>=0.2)
             with write_tx() as c:
-                own(c);c.execute(chat_messages.update().where(chat_messages.c.id==row['assistant_message_id'])
-                    .values(content=''.join(content)))
+                own(c)
+                if sync_body:
+                    c.execute(chat_messages.update().where(chat_messages.c.id==row['assistant_message_id'])
+                        .values(content=''.join(content)))
+                    last_msg_sync[0]=now_m
                 event(c,row['id'],attempt,'delta',{'text':value,'verification':'draft'})
         elif record['type']=='claim':
             claims.append(record['claim'])

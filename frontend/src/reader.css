@@ -78,3 +78,21 @@
 .reading-report code{white-space:pre-wrap;overflow-wrap:anywhere}
 .reading-specialties{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
 .reading-report [data-reading-specialty]{scroll-margin-top:55px}
+
+
+/* V2 Desktop & KaTeX Enhancements */
+.reader-subbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-top: 6px; }
+.reader-subbar .reader-tools { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.paper-reader { display: flex; flex-direction: column; min-height: 100vh; }
+.paper-reader-toolbar { position: sticky; top: 0; z-index: 20; background: #ffffff; border-bottom: 1px solid #e4e9e6; padding-bottom: 8px; }
+.paper-outline, .paper-ai { top: 104px; max-height: calc(100vh - 116px); overflow-y: auto; }
+.parse-callout { background: #f3f8f5; border: 1px solid #cfe0d6; border-radius: 10px; padding: 10px; margin-bottom: 10px; font-size: 12.5px; }
+.math-block { overflow-x: auto; padding: 10px 12px; margin: 8px 0; background: #f8faf9; border: 1px solid #e3ebe6; border-radius: 8px; }
+.claim-formula { margin: 6px 0; }
+.checkbox-inline { display: inline-flex !important; flex-direction: row !important; align-items: center; gap: 6px; font-size: 12.5px; cursor: pointer; }
+.glossary-table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px; }
+.glossary-table th, .glossary-table td { border: 1px solid #dfe6e1; padding: 6px 8px; text-align: left; }
+.glossary-table input[type="text"], .glossary-table input:not([type]) { width: 100%; box-sizing: border-box; }
+.obsidian-wikilink { color: #256f4e; background: #eef6f1; padding: 1px 5px; border-radius: 4px; font-size: 0.95em; }
+.import-panel.drag-active { outline: 2px dashed #1f6f4a; background: #eef8f2; }
+.notice { background: #eef8f2; border: 1px solid #bdddc9; color: #19593b; padding: 8px 12px; border-radius: 8px; margin: 8px 0; font-size: 13px; }

@@ -23,12 +23,15 @@ def components(relative):
     return parts
 
 def no_links(path):
-    # Reject every existing ancestor including Windows junction/reparse points.
+    # Reject untrusted symlinks/junctions while permitting Windows Cloud Filter (OneDrive/iCloud) placeholders.
     path=Path(os.path.abspath(path))
     for p in [*reversed(path.parents),path]:
         try:info=p.lstat()
         except FileNotFoundError:continue
-        if stat.S_ISLNK(info.st_mode) or getattr(info,'st_file_attributes',0)&getattr(stat,'FILE_ATTRIBUTE_REPARSE_POINT',1024):raise ValueError('不支持符号链接、junction或reparse point路径')
+        reparse_tag=getattr(info,'st_reparse_tag',0)
+        is_cloud=(reparse_tag & 0xFFFF0000)==0x90000000
+        if stat.S_ISLNK(info.st_mode) or (not is_cloud and getattr(info,'st_file_attributes',0)&getattr(stat,'FILE_ATTRIBUTE_REPARSE_POINT',1024)):
+            raise ValueError('不支持符号链接、junction或reparse point路径')
     return path
 
 def checked_root(root,subdir):
@@ -71,12 +74,12 @@ def owned_file(path):
     if not path.is_file():raise ValueError('所需源资源不存在')
     return path
 
-def resources(rev):
+def resources(rev, *, bundle_pdf=True):
     note=rev['note'];snap=rev['snapshot'];rid=note['parse_run_id']
     with engine.connect() as c:file=c.execute(select(paper_files).where(paper_files.c.id==note['paper_file_id'])).mappings().one()
     pdf=owned_file(file_path(file['relative_path']));pdf_hash=digest_bytes(pdf.read_bytes())
     if pdf_hash!=note['file_sha256']:raise ValueError('原PDF哈希发生变化')
-    result=[{'source':str(pdf),'relative':f"_resources/{note['id']}/{pdf_hash}.pdf",'sha256':pdf_hash,'size':pdf.stat().st_size,'kind':'pdf'}]
+    result=[{'source':str(pdf),'relative':f"_resources/{note['id']}/{pdf_hash}.pdf",'sha256':pdf_hash,'size':pdf.stat().st_size,'kind':'pdf'}] if bundle_pdf else []
     md=rev['markdown'];known={a['id']:a for a in notes.assets(note['id'])}
     used=set()
     def image(match):
@@ -91,12 +94,13 @@ def resources(rev):
         if aid not in used:result.append({'source':str(path),'relative':relative,'sha256':sha,'size':len(raw),'kind':'image'});used.add(aid)
         return '!['+match[1]+']('+quote(relative,safe='/')+')'
     md=export_markdown(md,image)
-    pdf_relative=quote(result[0]['relative'],safe='/')
-    md+='\n### 离线PDF证据\n\n[绑定原始PDF]('+pdf_relative+')\n'
-    for e in notes.evidence(snap):
-        for page in sorted({r['page_index']+1 for r in e.get('regions',[])}):
-            md+=f'\n- [原文第{page}页]({pdf_relative}#page={page})：'+safe_prose(e.get('quote','').replace('\n',' '))+'；状态 '+e['verification']+'\n'
-    md+='\n> 以上PDF链接支持页码跳转，不声明Obsidian坐标高亮。\n'
+    if bundle_pdf:
+        pdf_relative=quote(result[0]['relative'],safe='/')
+        md+='\n### 离线PDF证据\n\n[绑定原始PDF]('+pdf_relative+')\n'
+        for e in notes.evidence(snap):
+            for page in sorted({r['page_index']+1 for r in e.get('regions',[])}):
+                md+=f'\n- [原文第{page}页]({pdf_relative}#page={page})：'+safe_prose(e.get('quote','').replace('\n',' '))+'；状态 '+e['verification']+'\n'
+        md+='\n> 以上PDF链接支持页码跳转，不声明Obsidian坐标高亮。\n'
     if len(result)>501 or sum(f['size'] for f in result)>MAX_PACKAGE:raise ValueError('同步发布上限100MiB/500张图片')
     return md,result
 
@@ -248,3 +252,81 @@ def commit(eid):
         with write_tx() as c:c.execute(note_exports.update().where(note_exports.c.id==eid).values(status='failed',error=str(exc)))
         raise
     return get(eid)
+
+
+def durable_replace(path, data):
+    """Atomic fsync + same-volume replace for updating an existing managed note in place."""
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=path.parent, prefix='.papermind-upd-', delete=False) as f:
+            temporary = Path(f.name)
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+        no_links(path)
+        os.replace(temporary, path)
+    finally:
+        if temporary:
+            temporary.unlink(missing_ok=True)
+
+
+def sync_same_title(nid: str, *, bundle_pdf: bool = False, force_overwrite: bool = False):
+    """One-click Obsidian sync using exact paper title (<论文标题>.md) without serial number suffixes."""
+    rev = notes.revision(nid)
+    if not rev['reviewed']:
+        rev = notes.review(nid, rev['id'], rev['content_hash'])
+    config = settings()
+    if not config['configured']:
+        raise ValueError('请先在笔记面板的 Vault 设置中填写本地 Obsidian 库目录')
+    checked_root(config['root'], config['subdir'])
+    md, files = resources(rev, bundle_pdf=bundle_pdf)
+    # Normalize any remaining \(...\) and \[...\] outside code blocks for Obsidian MathJax
+    md = re.sub(r'\\\[([\s\S]*?)\\\]', lambda m: f'$$\n{m.group(1).strip()}\n$$', md)
+    md = re.sub(r'\\\(([^\n]*?)\\\)', lambda m: f'${m.group(1).strip()}$', md)
+    target_name = title_filename(rev['snapshot']['metadata'].get('title'), edition=1, fork=False)
+    md_bytes = md.encode('utf-8')
+    md_hash = digest_bytes(md_bytes)
+    eid = uid()
+    with write_tx() as c:
+        prior = baseline(c, nid, config)
+        target_file = target_path(config, target_name, create=True)
+        actual = disk_state(target_file)
+        if actual['exists'] and not force_overwrite:
+            managed_same_file = prior and filename_key(prior['plan']['target']) == filename_key(target_name)
+            if not managed_same_file or actual['sha256'] not in (prior['plan']['markdown_hash'], md_hash):
+                raise notes.Conflict(
+                    f'Obsidian 中已存在同名笔记「{target_name}」且包含外部修改；如确认覆盖更新可点击「覆盖同名文件」',
+                    target=target_name, vault=actual, local=md,
+                    diff=notes.diff_text(actual['text'] or '', md),
+                )
+        for resource in files:
+            src = owned_file(resource['source'])
+            rdata = src.read_bytes()
+            if digest_bytes(rdata) != resource['sha256']:
+                raise ValueError('源资源哈希变化')
+            rtarget = target_path(config, resource['relative'], create=True)
+            if not rtarget.exists():
+                durable_new(rtarget, rdata)
+        durable_replace(target_file, md_bytes)
+        plan = {
+            'request_hash': reading.digest({'sync': nid, 'rev': rev['id'], 'bundle_pdf': bundle_pdf, 'target': target_name}),
+            'render_version': EXPORT_VERSION,
+            'config': config,
+            'revision_hash': rev['content_hash'],
+            'markdown': md,
+            'markdown_hash': md_hash,
+            'files': files,
+            'target': target_name,
+            'baseline': {'target': target_name, 'sha256': md_hash, 'markdown': md},
+            'fork': False,
+            'same_title_sync': True,
+            'bundle_pdf': bundle_pdf,
+            'warnings': [],
+        }
+        now = time.time()
+        c.execute(note_exports.insert().values(
+            id=eid, note_id=nid, revision_id=rev['id'],
+            request_key='sync:' + eid, plan=plan,
+            status='succeeded', error=None, created_at=now, completed_at=now,
+        ))
+    return {**get(eid), 'full_path': str(target_path(config, target_name))}

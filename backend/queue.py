@@ -4,6 +4,19 @@ from .db import engine, jobs, job_events, parse_runs, uid, write_tx, emit, LEASE
 from .files import LeaseLost
 
 TERMINAL = {'succeeded', 'failed', 'cancelled'}
+LANES = {
+    'interactive': ('chat_answer', 'arxiv_import', 'arxiv_source'),
+    'llm': ('read_paper', 'translate_paper'),
+    'heavy': ('parse_pdf',),
+}
+JOB_LABELS = {
+    'arxiv_import': '导入',
+    'arxiv_source': '源码获取',
+    'parse_pdf': '结构解析',
+    'read_paper': '精读',
+    'translate_paper': '学术翻译',
+    'chat_answer': '问答',
+}
 
 def enqueue(payload):
     jid, now = uid(), time.time()
@@ -18,7 +31,7 @@ def get_job(jid):
         j = conn.execute(select(jobs).where(jobs.c.id == jid)).mappings().first()
         return dict(j) if j else None
 
-def claim(worker):
+def claim(worker, job_types=None):
     now = time.time()
     with write_tx() as conn:
         expired = conn.execute(select(jobs).where(jobs.c.status == 'running', jobs.c.lease_expires_at <= now)).mappings().all()
@@ -34,8 +47,10 @@ def claim(worker):
                 from .chat import failed
                 failed(conn,j,status,error)
             emit(conn, j['id'], status, {'message': error, 'error': error})
-        row = conn.execute(select(jobs).where(jobs.c.status == 'queued', jobs.c.available_at <= now,
-            jobs.c.attempts < jobs.c.max_attempts).order_by(jobs.c.created_at).limit(1)).mappings().first()
+        conds = [jobs.c.status == 'queued', jobs.c.available_at <= now, jobs.c.attempts < jobs.c.max_attempts]
+        if job_types:
+            conds.append(jobs.c.type.in_(tuple(job_types)))
+        row = conn.execute(select(jobs).where(*conds).order_by(jobs.c.created_at).limit(1)).mappings().first()
         if not row:
             return None
         conn.execute(jobs.update().where(jobs.c.id == row['id']).values(status='running',
@@ -79,8 +94,9 @@ def finish(jid, worker, result=None, error=None):
             failed(conn,j,status,error)
         if error:
             emit(conn, jid, 'progress', {'error': error, 'message': '本次尝试失败'})
+        label = JOB_LABELS.get(j['type'], '任务')
         emit(conn, jid, status, {'result': result, 'error': error, 'message':
-             '导入完成' if status == 'succeeded' else ('稍后自动重试' if status == 'queued' else '导入失败')})
+             f'{label}完成' if status == 'succeeded' else ('稍后自动重试' if status == 'queued' else f'{label}失败')})
 
 def retry(jid):
     with write_tx() as conn:
@@ -107,14 +123,24 @@ def events(jid, after=0):
             job_events.c.id > after).order_by(job_events.c.id)).mappings()]
 
 
-def cancel_reading(jid):
+def cancel_job(jid):
+    now = time.time()
     with write_tx() as conn:
         j = conn.execute(select(jobs).where(jobs.c.id == jid)).mappings().first()
         if not j:
             raise LookupError('任务不存在')
-        if j['type'] != 'read_paper' or j['status'] not in ('queued', 'running'):
-            raise ValueError('这里只能取消等待或运行中的精读任务')
+        if j['status'] not in ('queued', 'running'):
+            raise ValueError('只能取消等待或运行中的任务')
+        label = JOB_LABELS.get(j['type'], '任务')
         conn.execute(jobs.update().where(jobs.c.id == jid).values(
-            status='cancelled', worker_id=None, lease_expires_at=None, updated_at=time.time(), error=None))
-        emit(conn, jid, 'cancelled', {'message': '精读已取消'})
+            status='cancelled', worker_id=None, lease_expires_at=None, updated_at=now, error=None))
+        if j['type'] == 'parse_pdf':
+            conn.execute(parse_runs.update().where(parse_runs.c.job_id == jid, parse_runs.c.status != 'succeeded')
+                         .values(status='cancelled', error='用户已取消解析'))
+        if j['type'] == 'chat_answer':
+            from .chat import failed
+            failed(conn, j, 'failed', '用户已取消问答')
+        emit(conn, jid, 'cancelled', {'message': f'{label}已取消'})
     return get_job(jid)
+
+cancel_reading = cancel_job

@@ -3,18 +3,26 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from . import knowledge_reading, reading
+from .llm_provider import probe_connection
+from .reading_provider import ReadingFailure, validate_config
 
 router = APIRouter(prefix='/v1', tags=['reading-v1'])
+
 
 class SettingsInput(BaseModel):
     endpoint: str = Field(max_length=1000)
     model: str = Field(max_length=150)
     key_env: str = Field(default='', max_length=101)
+    api_key: str | None = Field(default=None, max_length=500)
+    clear_api_key: bool = False
+    use_system_proxy: bool | None = None
+
 
 class ReadingBudget(BaseModel):
     max_input_tokens: int | None = Field(default=None, ge=256, le=1_000_000)
     max_output_tokens: int | None = Field(default=None, ge=256, le=1_000_000)
     max_total_tokens: int | None = Field(default=None, ge=512, le=1_000_000)
+
 
 class ReadingInput(BaseModel):
     force: bool = False
@@ -24,6 +32,7 @@ class ReadingInput(BaseModel):
     use_cache: bool = True
     budget: ReadingBudget | None = None
 
+
 def invoke(fn, *args):
     try:
         return fn(*args)
@@ -32,34 +41,49 @@ def invoke(fn, *args):
     except ValueError as exc:
         raise HTTPException(409, str(exc)) from exc
 
+
 @router.get('/reading-settings')
 def settings():
     return {**reading.public_settings(), 'knowledge_reading_enabled': knowledge_reading.enabled()}
 
+
 @router.post('/reading-settings')
 def configure(body: SettingsInput):
-    return invoke(reading.configure, body.model_dump())
+    return invoke(reading.configure, body.model_dump(exclude_none=True))
+
+
+@router.post('/reading-settings/test')
+def test_settings(body: SettingsInput):
+    def _probe():
+        cfg = validate_config(body.model_dump(exclude_none=True))
+        return probe_connection(cfg, api_key_override=body.api_key, scope='workspace', failure_cls=ReadingFailure)
+    return invoke(_probe)
+
 
 @router.post('/parse-runs/{rid}/reading-runs', status_code=202)
 def create(rid: str, body: ReadingInput):
-    # Existing clients without a pipeline version retain the original API contract.
     return reading.public_run(invoke(reading.submit, rid, body.force, body.model_dump()))
+
 
 @router.get('/parse-runs/{rid}/reading-runs')
 def runs(rid: str):
     return invoke(reading.list_runs, rid)
 
+
 @router.get('/reading-runs/{rid}')
 def run(rid: str):
     return reading.public_run(invoke(reading.get_run, rid))
+
 
 @router.get('/reading-runs/{rid}/report')
 def report(rid: str):
     return invoke(reading.report, rid)
 
+
 @router.post('/reading-runs/{rid}/retry-specialties', status_code=202)
 def retry_specialties(rid: str):
     return reading.public_run(invoke(reading.retry_specialties, rid))
+
 
 @router.get('/reading-runs/{rid}/markdown')
 def markdown(rid: str):

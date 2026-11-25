@@ -42,11 +42,21 @@ def crop_math(page,clip,*,scale=2.5):
     groups.append((start,previous+1))
     relations=[c for c in cs if c['token'] in ('=',r'\le',r'\ge','<','>') and c['bbox'][0]<clip.x0+clip.width*.5]
     anchor=min(relations,key=lambda c:c['bbox'][0]) if relations else None
-    if anchor:
-        y=(anchor['origin'][1]-anchor['size']*.3)*scale-pix.y
-        chosen=min(groups,key=lambda g:0 if g[0]<=y<=g[1] else min(abs(y-g[0]),abs(y-g[1])))
-    else:chosen=max(groups,key=lambda g:g[1]-g[0])
-    y0=max(0,chosen[0]-1);y1=min(image.height,chosen[1]+1)
+    glyph_bands=[]
+    for g in groups:
+        gy0=pix.y/scale+g[0]/scale-1.0
+        gy1=pix.y/scale+g[1]/scale+1.0
+        if any(gy0<=c['origin'][1]<=gy1 or (c['bbox'][1]<=gy1 and c['bbox'][3]>=gy0) for c in cs):
+            glyph_bands.append(g)
+    if glyph_bands:
+        y0=max(0,min(g[0] for g in glyph_bands)-2)
+        y1=min(image.height,max(g[1] for g in glyph_bands)+2)
+    else:
+        if anchor:
+            y=(anchor['origin'][1]-anchor['size']*.3)*scale-pix.y
+            chosen=min(groups,key=lambda g:0 if g[0]<=y<=g[1] else min(abs(y-g[0]),abs(y-g[1])))
+        else:chosen=max(groups,key=lambda g:g[1]-g[0])
+        y0=max(0,chosen[0]-1);y1=min(image.height,chosen[1]+1)
     # Disconnected ink above/below a large operator is not another equation.
     # Admit only small glyphs spatially anchored to a sum/product, including
     # bounded evidence just outside a detector's original box. Do not expand

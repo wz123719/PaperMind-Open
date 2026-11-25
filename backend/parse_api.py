@@ -82,11 +82,24 @@ def markdown(rid:str):
 def json_document(rid:str):
     return artifact(rid,'structure.json','application/json')
 
+from functools import lru_cache
+
+@lru_cache(maxsize=128)
+def _known_assets(rid: str) -> frozenset[str]:
+    from sqlalchemy import select
+    from .db import engine, document_blocks
+    with engine.connect() as conn:
+        rows = conn.execute(select(document_blocks.c.data).where(document_blocks.c.parse_run_id == rid)).scalars().all()
+    return frozenset(a for d in rows if isinstance(d, dict) for a in d.get('assets', []))
+
 @router.get('/parse-runs/{rid}/assets/{asset_id}')
 def asset(rid:str,asset_id:str):
-    doc=structure(rid)
-    known={a for b in doc['blocks'] for a in b['data'].get('assets',[])}
-    if asset_id not in known:
+    row=parsing.get_run(rid)
+    if not row:
+        raise HTTPException(404,'解析运行不存在')
+    if row['status']!='succeeded' or not row['artifact_root']:
+        raise HTTPException(409,'解析尚未完整成功')
+    if asset_id not in _known_assets(rid):
         raise HTTPException(404,'解析资源不存在')
     return artifact(rid,asset_id,'image/png')
 

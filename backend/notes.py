@@ -32,10 +32,13 @@ def revision(nid,rid=None):
 
 def listing(paper_id=None):
     with engine.connect() as c:
-        query=select(notes).order_by(notes.c.created_at.desc())
-        if paper_id:query=query.where(notes.c.paper_id==paper_id)
-        rows=[dict(r) for r in c.execute(query).mappings()]
-    return [{**r,'title':revision(r['id'])['snapshot']['metadata']['title']} for r in rows]
+        query = select(
+            notes,
+            note_revisions.c.snapshot['metadata']['title'].as_string().label('title'),
+        ).join(note_revisions, note_revisions.c.id == notes.c.current_revision).order_by(notes.c.created_at.desc())
+        if paper_id:
+            query = query.where(notes.c.paper_id == paper_id)
+        return [dict(r) for r in c.execute(query).mappings()]
 
 def versions(nid):
     get(nid)

@@ -28,28 +28,34 @@ class Conflict(ValueError):
 
 
 def settings(task):
+    from . import dpapi
     if task not in ('translation', 'glossary'):
         raise ValueError('任务类型无效')
     with engine.connect() as c:
         config = c.execute(select(task_model_settings.c.config).where(task_model_settings.c.id == task)).scalar()
     if config:
-        return {**config, 'source':'task'}
+        return {**config, **dpapi.secret_metadata(task), 'source':'task'}
     workspace = workspace_model_settings()
-    return {**workspace, 'source':'workspace', 'workspace_revision':workspace['revision'], 'revision':None,
+    return {**workspace, **dpapi.secret_metadata(task), 'source':'workspace', 'workspace_revision':workspace['revision'], 'revision':None,
             'uses_default_model':workspace['revision'] is None}
 
 
 def configure(task, value):
+    from . import dpapi
     settings(task)  # Validate the task; the override revision is checked inside the transaction.
     config = validate_config(value)
     with write_tx() as c:
         current = c.execute(select(task_model_settings.c.config).where(task_model_settings.c.id == task)).scalar()
         if (current or {}).get('revision') != value.get('expected_revision'):
             raise Conflict({'remote':current})
+        if value.get('clear_api_key'):
+            dpapi.delete_secret(task)
+        elif value.get('api_key') and str(value['api_key']).strip():
+            dpapi.save_secret(task, str(value['api_key']))
         config['revision'] = uid()
         c.execute(task_model_settings.delete().where(task_model_settings.c.id == task))
         c.execute(task_model_settings.insert().values(id=task, config=config))
-    return {**config, 'source':'task'}
+    return settings(task)
 
 
 def glossary(paper_id):
@@ -202,9 +208,35 @@ def get_run(rid):
 
 
 def list_runs(parse_id):
+    from sqlalchemy import func
     with engine.connect() as c:
-        ids=c.execute(select(translation_runs.c.id).where(translation_runs.c.parse_run_id==parse_id).order_by(translation_runs.c.created_at.desc())).scalars().all()
-    return [{k:v for k,v in get_run(rid).items() if k not in ('snapshot','blocks','batches')} for rid in ids]
+        rows = c.execute(select(
+            translation_runs.c.id, translation_runs.c.parse_run_id, translation_runs.c.job_id,
+            translation_runs.c.request_key, translation_runs.c.request_hash, translation_runs.c.created_at,
+            translation_runs.c.snapshot['scope'].as_string().label('scope'),
+            translation_runs.c.snapshot['task'].as_string().label('task'),
+            func.json_array_length(translation_runs.c.snapshot, '$.blocks').label('total_blocks'),
+            jobs.c.status, jobs.c.error, jobs.c.attempts, jobs.c.max_attempts
+        ).join(jobs, translation_runs.c.job_id == jobs.c.id)
+         .where(translation_runs.c.parse_run_id == parse_id)
+         .order_by(translation_runs.c.created_at.desc())).mappings().all()
+        if not rows: return []
+        rids = [r['id'] for r in rows]
+        revs = c.execute(select(translation_blocks.c.run_id,
+            translation_revisions.c.result['status'].as_string().label('s'),
+            translation_revisions.c.result['cached'].as_boolean().label('c'))
+            .join(translation_revisions, translation_revisions.c.id == translation_blocks.c.current_revision)
+            .where(translation_blocks.c.run_id.in_(rids))).mappings().all()
+    by_run = {k: [] for k in rids}
+    for x in revs: by_run[x['run_id']].append(x)
+    out = []
+    for r in rows:
+        d = dict(r); total = d.pop('total_blocks') or 1; rl = by_run[d['id']]
+        counts = {s: sum(x['s'] == s for x in rl) for s in ('translated','preserved','needs_review','failed')}
+        d['counts'] = {**counts, 'total': total, 'cache_hits': sum(bool(x['c']) for x in rl),
+                       'completion': (counts['translated'] + counts['preserved']) / total}
+        out.append(d)
+    return out
 
 
 def put_revision(c,rid,bid,result,parent=None,cache_key=None):
@@ -236,8 +268,9 @@ def cache_key(snap,block):
 
 
 def validate_response(raw, targets):
+    from .llm_provider import strip_json_fence
     try:
-        rows=json.loads(raw)['blocks']
+        rows=json.loads(strip_json_fence(raw))['blocks']
         if not isinstance(rows,list) or len(rows)!=len(targets):raise ValueError()
         ids=[r['source_block_id'] for r in rows]
         if len(set(ids))!=len(ids) or set(ids)!={t['id'] for t in targets}:raise ValueError()
@@ -248,8 +281,9 @@ def validate_response(raw, targets):
 
 
 def glossary_response(raw,block):
+    from .llm_provider import strip_json_fence
     try:
-        terms=json.loads(raw)['terms']
+        terms=json.loads(strip_json_fence(raw))['terms']
         assert isinstance(terms,list) and len(terms)<=80
         result=[]
         for term in terms:
@@ -263,10 +297,103 @@ def glossary_response(raw,block):
         raise ReadingFailure('术语建议不在本次来源内或协议无效') from None
 
 
+def _run_batch_groups(rid, snap, job, worker, cancelled, provider):
+    if snap['task'] != 'translation' or len(snap['blocks']) < 2:
+        return
+    from .llm_provider import strip_json_fence
+    with engine.connect() as c:
+        done_ids = set(c.execute(select(translation_blocks.c.block_id).where(translation_blocks.c.run_id == rid)).scalars().all())
+    group = []
+    def flush(batch):
+        if len(batch) < 2:
+            return
+        if cancelled():
+            raise LeaseLost('翻译租约已失效')
+        all_targets = []
+        per_block = {}
+        for b, ck, items in batch:
+            tlist = []
+            for item in items:
+                protected, mapping = protect(item['text'], snap['terms'])
+                tlist.append({**item, 'protected': protected, 'mapping': mapping})
+            per_block[b['id']] = (b, ck, tlist)
+            all_targets.extend(tlist)
+        sec_id = batch[0][0]['section_id']
+        payload = {'targets': [{'source_block_id': t['id'], 'text': t['protected']} for t in all_targets],
+                   'section_id': sec_id, 'section_title': snap['section_titles'].get(sec_id, ''),
+                   'task': 'translation', 'context': []}
+        serialized = json.dumps(payload, ensure_ascii=False)
+        if len(serialized) + len(snap['prompt']) > MAX_INPUT:
+            return
+        batchid = uid()
+        start = time.monotonic()
+        with write_tx() as c:
+            if not c.execute(select(jobs.c.id).where(queue.owned(job['id'], worker, time.time()))).scalar():
+                raise LeaseLost()
+            c.execute(translation_batches.insert().values(
+                id=batchid, run_id=rid,
+                data={'block_id': 'batch:' + batch[0][0]['id'], 'state': 'started', 'input': payload, 'input_chars': len(serialized)},
+                created_at=time.time()))
+        raw = None; usage = None; error = None; per_results = {}
+        try:
+            raw, usage = provider(snap['config'], [{'role': 'system', 'content': snap['prompt']}, {'role': 'user', 'content': serialized}], cancelled)
+            if not isinstance(raw, str) or len(raw) > 40000:
+                raise ReadingFailure('输出超过限制')
+            translated = validate_response(raw, all_targets)
+            rows_by_id = {r['source_block_id']: r for r in json.loads(strip_json_fence(raw))['blocks']}
+            for bid, (b, ck, tlist) in per_block.items():
+                single_raw = json.dumps({'blocks': [rows_by_id[t['id']] for t in tlist]}, ensure_ascii=False)
+                validate_response(single_raw, tlist)
+                res = {'status': 'translated', 'reason': None, 'text': translated[bid], 'source_hash': digest(b),
+                       'manual': False, 'cached': False, 'validation': ['deterministic_passed_semantics_unreviewed'],
+                       'reviewed': False, 'validated_raw': single_raw, 'targets': tlist}
+                res['cache_integrity'] = digest(res)
+                per_results[bid] = (ck, res)
+        except Exception as exc:
+            if isinstance(exc, LeaseLost):
+                raise
+            error = str(exc)[:300]
+        with write_tx() as c:
+            if not c.execute(select(jobs.c.id).where(queue.owned(job['id'], worker, time.time()))).scalar():
+                raise LeaseLost()
+            c.execute(translation_batches.update().where(translation_batches.c.id == batchid).values(data={
+                'block_id': 'batch:' + batch[0][0]['id'], 'state': 'failed' if error else 'validated',
+                'input': payload, 'output': raw if isinstance(raw, str) and len(raw) <= 40000 else None,
+                'usage': usage or 'unknown', 'cost': 'unknown', 'elapsed_seconds': time.monotonic() - start, 'error': error}))
+            if not error:
+                for bid, (ck, res) in per_results.items():
+                    head = c.execute(select(translation_blocks.c.current_revision).where(
+                        translation_blocks.c.run_id == rid, translation_blocks.c.block_id == bid)).scalar()
+                    if not head:
+                        put_revision(c, rid, bid, res, cache_key=ck)
+                done = c.execute(select(translation_blocks.c.block_id).where(translation_blocks.c.run_id == rid)).scalars().all()
+                checkpoint = {'stage': 'translation', 'processed': len(done), 'total': len(snap['blocks']), 'message': '已保存批量翻译检查点'}
+                c.execute(jobs.update().where(queue.owned(job['id'], worker, time.time())).values(checkpoint=checkpoint, updated_at=time.time()))
+                emit(c, job['id'], 'progress', checkpoint)
+
+    for block in snap['blocks']:
+        if block['id'] in done_ids or block['type'] == 'table':
+            flush(group); group = []; continue
+        ck = cache_key(snap, block); items, status, _ = units(block)
+        if status is not None:
+            flush(group); group = []; continue
+        if not snap['force']:
+            with engine.connect() as c:
+                has_cache = c.execute(select(translation_revisions.c.id).where(translation_revisions.c.cache_key == ck).limit(1)).scalar()
+            if has_cache:
+                flush(group); group = []; continue
+        if group and (group[-1][0]['section_id'] != block['section_id'] or len(group) >= 5
+                      or sum(len(x[0]['text']) for x in group) + len(block['text']) > 3800):
+            flush(group); group = []
+        group.append((block, ck, items))
+    flush(group)
+
+
 def execute(job,worker,cancelled,provider=complete):
     rid=job['payload']['translation_run_id'];run=get_run(rid);snap=run['snapshot']
     if snap['protection']!=VERSION or snap['translation_version']!=TRANSLATION_VERSION:
         raise ReadingFailure('翻译保护协议已变更，请创建新任务；旧成果保持可读')
+    _run_batch_groups(rid, snap, job, worker, cancelled, provider)
     for block in snap['blocks']:
         if cancelled():raise LeaseLost('翻译租约已失效')
         with engine.connect() as c:
@@ -362,4 +489,4 @@ def execute(job,worker,cancelled,provider=complete):
                 emit(c,job['id'],'progress',checkpoint)
     final=get_run(rid)
     queue.finish(job['id'],worker,result={'translation_run_id':rid,'counts':final['counts']},
-                 error='存在待复核或失败块，请查看逐块结果' if final['counts']['failed'] or final['counts']['needs_review'] else None)
+                 error='存在翻译失败块，请查看逐块结果' if final['counts']['failed'] else None)

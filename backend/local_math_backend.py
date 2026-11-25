@@ -119,7 +119,16 @@ def recognize_region(page,localized,session,parts=()):
     from .source_adapter import match_math
     source_candidate=match_math(getattr(session,'source_document',None),native,page,localized['bbox'],native_checks=checks)
     if source_candidate:candidates.append(source_candidate)
-    supported=not checks and sum(c['font'].startswith(('CM','MSAM','MSBM')) for c in cs)>=3
+    from .native_math import group_lines, is_math
+    line_groups = group_lines(cs)
+    if len(line_groups) > 1:
+        checks.append('multiline_layout_requires_visual_model')
+    all_mapped = all(
+        not c['c'].strip() or is_math(c) or c['token'].startswith('\\') or c['c'] in '0123456789+-=()[].,:;/|<>'
+        for c in cs
+    )
+    supported = (not checks and all_mapped and len(line_groups) <= 1
+                 and sum(c['font'].startswith(('CM','MSAM','MSBM','STIX','LatinModernMath','LMMath')) for c in cs) >= 3)
     route_events=[{'route':'pdf_glyph_rule_layout','status':'supported' if supported else 'unsupported',
                    'reason':'mapped_math_fonts_and_rules' if supported else checks or ['insufficient_math_font_evidence']}]
     source_selected=source_candidate is not None and not source_candidate['checks']

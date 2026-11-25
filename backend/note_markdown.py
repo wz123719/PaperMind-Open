@@ -40,6 +40,11 @@ def regions(text):
             opener=re.match(r'`+',text[index:])[0]
             close=re.compile(r'(?<!`)'+re.escape(opener)+r'(?!`)').search(text,index+len(opener))
             if close:end=close.end()
+        if end is None and text[index:index+2] in (r'\(', r'\['):
+            closer = r'\)' if text[index:index+2] == r'\(' else r'\]'
+            pos = text.find(closer, index + 2)
+            if pos >= 0 and (closer == r'\]' or '\n' not in text[index:pos]):
+                end = pos + 2
         if end is None and text[index]=='$' and not escaped(text,index):
             marker='$$' if text[index:index+2]=='$$' else '$'
             close=ending(text,marker,index+len(marker),marker=='$')
@@ -68,8 +73,8 @@ def export_markdown(text,image):
             # Preserve Markdown blockquote markers, including Obsidian callouts.
             # Escape angle brackets in the content as before.
             clean=safe_prose(part,image)
-            out.append(re.sub(r'(?m)^([ ]{0,3})&gt;(?=[ \t])',r'\1>',clean)
+            out.append(re.sub(r'(?m)^([ ]{0,3})&gt;(?=[ \t\r\n]|$)',r'\1>',clean)
                        if offset==0 or text[offset-1]=='\n' else
-                       re.sub(r'(\n[ ]{0,3})&gt;(?=[ \t])',r'\1>',clean))
+                       re.sub(r'(\n[ ]{0,3})&gt;(?=[ \t\r\n]|$)',r'\1>',clean))
         offset+=len(part)
     return ''.join(out)

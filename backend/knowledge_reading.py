@@ -131,8 +131,9 @@ def build_context(items, stage, ids=(), limit=30000):
 
 
 def obj(raw):
+    from .llm_provider import strip_json_fence
     try:
-        data = json.loads(raw) if isinstance(raw, str) and len(raw) <= 100000 else None
+        data = json.loads(strip_json_fence(raw)) if isinstance(raw, str) and len(raw) <= 100000 else None
     except ValueError:
         data = None
     if not isinstance(data, dict):
@@ -518,7 +519,14 @@ class MarkdownRenderer:
                 notes = {'inferred': '（推断）', 'unsupported': '（证据不足）', 'conflicted': '（存在冲突）'}
                 out.append(f'- **{claim["topic"]}**：{claim["text"]}{notes.get(claim["verification"], "")}')
                 out.extend(f'  - 原文（{e["block_id"]}）：{e["quote"]}' for e in claim['evidence'] if e['matched'])
-                out.extend('  - 解析公式（需核对）：' + (f['latex'] or '未完整识别') for f in claim['formulas'])
+                for f in claim['formulas']:
+                    flatex = (f.get('latex') or '').strip()
+                    if flatex:
+                        if flatex.startswith(r'\[') and flatex.endswith(r'\]'):
+                            flatex = flatex[2:-2].strip()
+                        out.append(f'  - 解析公式（需核对）：\n\n$$\n{flatex}\n$$')
+                    else:
+                        out.append('  - 解析公式（需核对）：未完整识别')
         warnings = reading_result.get('warnings', [])
         if warnings:
             out.extend(['## 阅读提示', *('- '+w for w in warnings)])

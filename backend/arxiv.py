@@ -73,8 +73,9 @@ def fetch(client, url, limit, target=None, progress=lambda _: None):
     raise ImportFailure('arXiv 重定向次数过多')
 
 def download(payload, target, progress, client=None):
+    from .llm_provider import trust_system_proxy
     own = client is None
-    client = client or httpx.Client(timeout=httpx.Timeout(30, connect=10), trust_env=False,
+    client = client or httpx.Client(timeout=httpx.Timeout(30, connect=10), trust_env=trust_system_proxy(),
                                     headers={'User-Agent': 'PaperMindWorkspace/1.0 (local research importer)'})
     try:
         canonical = payload['canonical']

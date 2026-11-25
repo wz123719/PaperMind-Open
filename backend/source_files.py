@@ -41,7 +41,8 @@ def acquire(fid,target,progress=lambda _:None,client=None):
     file=identity(fid)
     if not file['arxiv_id'] or not file['arxiv_version']:raise SourceFailure('当前PDF没有可靠的arXiv版本，不能绑定源文件')
     canonical=f"{file['arxiv_id']}v{file['arxiv_version']}";url='https://arxiv.org/src/'+canonical
-    own=client is None;client=client or httpx.Client(timeout=httpx.Timeout(30,connect=10),trust_env=False,
+    from .llm_provider import trust_system_proxy
+    own=client is None;client=client or httpx.Client(timeout=httpx.Timeout(30,connect=10),trust_env=trust_system_proxy(),
         headers={'User-Agent':'PaperMindWorkspace/1.0 (exact-version source research)'})
     started=time.monotonic()
     try:

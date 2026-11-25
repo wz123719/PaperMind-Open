@@ -51,7 +51,7 @@ def inspect_pdf(path):
         if f.read(5) != b'%PDF-':
             raise ValueError('文件不是有效 PDF')
     try:
-        reader = PdfReader(path, strict=True)
+        reader = PdfReader(path, strict=False)
         if reader.is_encrypted:
             raise ValueError('本轮不支持加密 PDF')
         count = len(reader.pages)

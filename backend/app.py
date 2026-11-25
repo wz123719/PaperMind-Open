@@ -21,8 +21,8 @@ async def lifespan(_):
     init_db()
     yield
 
-app = FastAPI(title='PaperMind Workspace', version='0.1.0', lifespan=lifespan)
-app.add_middleware(CORSMiddleware, allow_origins=ORIGINS, allow_methods=['GET', 'POST', 'PATCH'],
+app = FastAPI(title='PaperMind Workspace', version='0.2.0', lifespan=lifespan)
+app.add_middleware(CORSMiddleware, allow_origins=ORIGINS, allow_methods=['GET', 'POST', 'PATCH', 'DELETE'],
                    allow_headers=['Content-Type', 'X-PaperMind-Client', 'Last-Event-ID'])
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=['127.0.0.1', 'localhost', '[::1]'])
 
@@ -37,6 +37,9 @@ class LocalGuard:
     async def __call__(self, scope, receive, send):
         if scope['type'] != 'http':
             return await self.app(scope, receive, send)
+        path_str = scope.get('path', '')
+        if path_str == '/api' or path_str.startswith('/api/'):
+            scope = {**scope, 'path': path_str[4:] or '/'}
         headers = dict(scope['headers'])
         if scope['method'] not in ('GET', 'HEAD', 'OPTIONS'):
             origin = headers.get(b'origin', b'').decode()
@@ -93,7 +96,103 @@ def health():
 @app.get('/papers')
 def list_papers():
     with engine.connect() as conn:
-        return [paper_detail(pid, conn) for pid in conn.execute(select(papers.c.id).order_by(papers.c.created_at.desc())).scalars()]
+        prows = [dict(r) for r in conn.execute(select(papers).order_by(papers.c.created_at.desc())).mappings()]
+        if not prows:
+            return []
+        frows = conn.execute(select(
+            paper_files.c.paper_id, paper_files.c.id, paper_files.c.version,
+            paper_files.c.arxiv_version, paper_files.c.sha256, paper_files.c.source,
+            paper_files.c.pages, paper_files.c.size, paper_files.c.created_at,
+        ).order_by(paper_files.c.version.desc())).mappings().all()
+    by_paper = {p['id']: [] for p in prows}
+    for f in frows:
+        d = dict(f)
+        pid = d.pop('paper_id')
+        if pid in by_paper:
+            by_paper[pid].append(d)
+    return [{**p, 'files': by_paper[p['id']]} for p in prows]
+
+class PaperMetaInput(BaseModel):
+    title: str | None = Field(default=None, max_length=500)
+    authors: list[str] | None = Field(default=None, max_length=100)
+    year: int | None = Field(default=None, ge=1900, le=2100)
+
+@app.patch('/papers/{pid}')
+def update_paper(pid: str, body: PaperMetaInput):
+    from .db import write_tx
+    updates = {}
+    if body.title is not None:
+        updates['title'] = body.title.strip() or None
+    if body.authors is not None:
+        updates['authors'] = [a.strip() for a in body.authors if a.strip()] or None
+    if body.year is not None:
+        updates['year'] = body.year
+    with write_tx() as conn:
+        if not conn.execute(select(papers.c.id).where(papers.c.id == pid)).scalar():
+            raise HTTPException(404, '论文不存在')
+        if updates:
+            conn.execute(papers.update().where(papers.c.id == pid).values(**updates))
+        return paper_detail(pid, conn)
+
+@app.delete('/papers/{pid}')
+def delete_paper(pid: str):
+    import shutil
+    from .db import (write_tx, file_parse_heads, parse_runs, document_blocks, document_sections,
+                     reading_runs, reading_stages, chat_sessions, chat_messages, chat_turns, chat_events,
+                     notes, note_revisions, note_operations, note_reviews, note_exports,
+                     glossary_versions, translation_runs, translation_blocks, translation_revisions,
+                     translation_batches, translation_requests)
+    with write_tx() as conn:
+        if not conn.execute(select(papers.c.id).where(papers.c.id == pid)).scalar():
+            raise HTTPException(404, '论文不存在')
+        fids = conn.execute(select(paper_files.c.id).where(paper_files.c.paper_id == pid)).scalars().all()
+        fpaths = conn.execute(select(paper_files.c.relative_path).where(paper_files.c.paper_id == pid)).scalars().all()
+        prids = conn.execute(select(parse_runs.c.id).where(parse_runs.c.paper_file_id.in_(fids))).scalars().all() if fids else []
+        nids = conn.execute(select(notes.c.id).where(notes.c.paper_id == pid)).scalars().all()
+        if nids:
+            nrids = conn.execute(select(note_revisions.c.id).where(note_revisions.c.note_id.in_(nids))).scalars().all()
+            if nrids:
+                conn.execute(note_reviews.delete().where(note_reviews.c.revision_id.in_(nrids)))
+            conn.execute(note_exports.delete().where(note_exports.c.note_id.in_(nids)))
+            conn.execute(note_operations.delete().where(note_operations.c.note_id.in_(nids)))
+            conn.execute(note_revisions.delete().where(note_revisions.c.note_id.in_(nids)))
+            conn.execute(notes.delete().where(notes.c.id.in_(nids)))
+        sids = conn.execute(select(chat_sessions.c.id).where(chat_sessions.c.paper_id == pid)).scalars().all()
+        if sids:
+            tids = conn.execute(select(chat_turns.c.id).where(chat_turns.c.session_id.in_(sids))).scalars().all()
+            if tids:
+                conn.execute(chat_events.delete().where(chat_events.c.turn_id.in_(tids)))
+                conn.execute(chat_turns.delete().where(chat_turns.c.id.in_(tids)))
+            conn.execute(chat_messages.delete().where(chat_messages.c.session_id.in_(sids)))
+            conn.execute(chat_sessions.delete().where(chat_sessions.c.id.in_(sids)))
+        if prids:
+            trids = conn.execute(select(translation_runs.c.id).where(translation_runs.c.parse_run_id.in_(prids))).scalars().all()
+            if trids:
+                conn.execute(translation_requests.delete().where(translation_requests.c.run_id.in_(trids)))
+                conn.execute(translation_batches.delete().where(translation_batches.c.run_id.in_(trids)))
+                conn.execute(translation_blocks.delete().where(translation_blocks.c.run_id.in_(trids)))
+                conn.execute(translation_revisions.delete().where(translation_revisions.c.run_id.in_(trids)))
+                conn.execute(translation_runs.delete().where(translation_runs.c.id.in_(trids)))
+            rrids = conn.execute(select(reading_runs.c.id).where(reading_runs.c.parse_run_id.in_(prids))).scalars().all()
+            if rrids:
+                conn.execute(reading_stages.delete().where(reading_stages.c.run_id.in_(rrids)))
+                conn.execute(reading_runs.delete().where(reading_runs.c.id.in_(rrids)))
+            conn.execute(file_parse_heads.delete().where(file_parse_heads.c.paper_file_id.in_(fids)))
+            conn.execute(document_blocks.delete().where(document_blocks.c.parse_run_id.in_(prids)))
+            conn.execute(document_sections.delete().where(document_sections.c.parse_run_id.in_(prids)))
+            conn.execute(parse_runs.delete().where(parse_runs.c.id.in_(prids)))
+        conn.execute(glossary_versions.delete().where(glossary_versions.c.paper_id == pid))
+        if fids:
+            conn.execute(paper_files.delete().where(paper_files.c.id.in_(fids)))
+        conn.execute(papers.delete().where(papers.c.id == pid))
+    for rel in fpaths:
+        try:
+            file_path(rel).unlink(missing_ok=True)
+        except OSError:
+            pass
+    for prid in prids:
+        shutil.rmtree(STORAGE / 'parses' / prid, ignore_errors=True)
+    return {'deleted': pid}
 
 @app.get('/papers/{pid}')
 def get_paper(pid: str):
@@ -213,3 +312,11 @@ async def stream_events(jid: str, request: Request):
             await asyncio.sleep(.5)
     return StreamingResponse(stream(), media_type='text/event-stream',
         headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
+
+
+if os.getenv('PAPERMIND_SERVE_DIST') == '1':
+    from fastapi.staticfiles import StaticFiles
+    from .db import ROOT as _APP_ROOT
+    _dist = _APP_ROOT / 'frontend' / 'dist'
+    if _dist.is_dir():
+        app.mount('/', StaticFiles(directory=str(_dist), html=True), name='frontend-dist')

@@ -3,8 +3,8 @@ from pydantic import BaseModel,Field
 from . import notes,note_exports
 
 router=APIRouter(prefix='/v1',tags=['notes-v1'])
-def invoke(fn,*args):
-    try:return fn(*args)
+def invoke(fn,*args,**kwargs):
+    try:return fn(*args,**kwargs)
     except notes.Conflict as e:raise HTTPException(409,e.detail) from e
     except LookupError as e:raise HTTPException(404,str(e)) from e
     except ValueError as e:raise HTTPException(409,str(e)) from e
@@ -86,3 +86,28 @@ def export_history(nid:str):return invoke(note_exports.listing,nid)
 def commit(eid:str):return invoke(note_exports.commit,eid)
 @router.get('/note-exports/{eid}')
 def result(eid:str):return invoke(note_exports.get,eid)
+
+
+class SyncObsidianInput(BaseModel):
+    bundle_pdf: bool = False
+    force_overwrite: bool = False
+
+@router.post('/notes/{nid}/sync-obsidian')
+def sync_obsidian(nid: str, b: SyncObsidianInput):
+    return invoke(note_exports.sync_same_title, nid, bundle_pdf=b.bundle_pdf, force_overwrite=b.force_overwrite)
+
+@router.delete('/notes/{nid}')
+def delete_note(nid: str):
+    from sqlalchemy import select
+    from .db import write_tx, notes as notes_t, note_revisions, note_operations, note_reviews, note_exports as exports_t
+    with write_tx() as c:
+        if not c.execute(select(notes_t.c.id).where(notes_t.c.id == nid)).scalar():
+            raise HTTPException(404, '笔记不存在')
+        rids = c.execute(select(note_revisions.c.id).where(note_revisions.c.note_id == nid)).scalars().all()
+        if rids:
+            c.execute(note_reviews.delete().where(note_reviews.c.revision_id.in_(rids)))
+        c.execute(exports_t.delete().where(exports_t.c.note_id == nid))
+        c.execute(note_operations.delete().where(note_operations.c.note_id == nid))
+        c.execute(note_revisions.delete().where(note_revisions.c.note_id == nid))
+        c.execute(notes_t.delete().where(notes_t.c.id == nid))
+    return {'deleted': nid}
