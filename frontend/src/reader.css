@@ -96,3 +96,54 @@
 .obsidian-wikilink { color: #256f4e; background: #eef6f1; padding: 1px 5px; border-radius: 4px; font-size: 0.95em; }
 .import-panel.drag-active { outline: 2px dashed #1f6f4a; background: #eef8f2; }
 .notice { background: #eef8f2; border: 1px solid #bdddc9; color: #19593b; padding: 8px 12px; border-radius: 8px; margin: 8px 0; font-size: 13px; }
+
+/* Persistent PDF & Text Highlights */
+.persistent-highlight { border: 0; border-radius: 2px; }
+.persistent-highlight.hl-yellow { background: rgba(255, 224, 92, 0.48); border-bottom: 1.5px solid rgba(217, 165, 16, 0.75); }
+.persistent-highlight.hl-green { background: rgba(112, 214, 146, 0.42); border-bottom: 1.5px solid rgba(46, 158, 86, 0.7); }
+.persistent-highlight.hl-blue { background: rgba(116, 185, 255, 0.42); border-bottom: 1.5px solid rgba(48, 128, 214, 0.7); }
+.persistent-highlight.hl-pink { background: rgba(255, 148, 189, 0.42); border-bottom: 1.5px solid rgba(214, 72, 124, 0.7); }
+.locate-highlight { background: rgba(255, 196, 36, 0.42); border: 1.5px solid #d98200; }
+
+mark.inline-hl { padding: 0 2px; border-radius: 3px; color: inherit; }
+mark.inline-hl.hl-yellow { background: #fff099; }
+mark.inline-hl.hl-green { background: #c9f2d6; }
+mark.inline-hl.hl-blue { background: #cce5ff; }
+mark.inline-hl.hl-pink { background: #ffd4e5; }
+
+.hl-selection-bar { position: sticky; top: 102px; z-index: 12; display: flex; flex-direction: column; gap: 8px; padding: 10px 14px; background: #f2f8f4; border-bottom: 1px solid #c6dece; border-radius: 8px 8px 0 0; box-shadow: 0 3px 10px rgba(24, 48, 34, 0.08); }
+.hl-selection-preview { font-size: 12.5px; color: #223429; line-height: 1.45; }
+.hl-selection-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.hl-selection-controls button { font-size: 12px; padding: 5px 10px; }
+.hl-note-input { flex: 1 1 140px; min-width: 120px; font-size: 12px; padding: 5px 8px; border: 1px solid #c4d8cb; border-radius: 6px; background: #fff; }
+.hl-swatches { display: inline-flex; align-items: center; gap: 5px; }
+.hl-swatch { width: 18px; height: 18px; min-width: 18px; padding: 0 !important; border-radius: 50% !important; border: 2px solid transparent !important; cursor: pointer; }
+.hl-swatch.active { border-color: #1f2b24 !important; transform: scale(1.12); }
+
+.hl-toast { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin: 8px 10px; }
+.hl-toast-actions { display: flex; gap: 6px; }
+.hl-toast-actions button { font-size: 12px; padding: 4px 10px; }
+
+.highlights-note-target { background: #f4f8f5; border: 1px solid #d9e6dd; border-radius: 8px; padding: 10px; margin: 10px 0 12px; }
+.highlights-note-target label { display: block; margin: 6px 0; font-size: 12px; }
+.highlights-note-target select { width: 100%; margin-top: 4px; font-size: 12px; }
+.highlight-list { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+.highlight-card { background: #fff; border: 1px solid #e0e8e2; border-left: 4px solid #f5c430; border-radius: 8px; padding: 10px 11px; }
+.highlight-card.hl-border-yellow { border-left-color: #f5c430; }
+.highlight-card.hl-border-green { border-left-color: #4db874; }
+.highlight-card.hl-border-blue { border-left-color: #4a96eb; }
+.highlight-card.hl-border-pink { border-left-color: #eb6c9b; }
+.highlight-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.hl-badge { font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 10px; color: #243028; }
+.hl-dot-yellow { background: #fff1a8; }
+.hl-dot-green { background: #d2f4dd; }
+.hl-dot-blue { background: #d6e9ff; }
+.hl-dot-pink { background: #ffd8e7; }
+.highlight-quote-btn { display: block; width: 100%; border: 0; background: transparent; text-align: left; padding: 0; cursor: pointer; }
+.highlight-quote-btn blockquote { margin: 0 0 6px; padding: 6px 8px; background: #f8faf8; border-radius: 6px; font-size: 12.5px; line-height: 1.55; color: #222; white-space: pre-wrap; overflow-wrap: anywhere; }
+.highlight-quote-btn:hover blockquote { background: #eff5f1; }
+.highlight-annotation { margin: 4px 0 8px; font-size: 12px; color: #365041; background: #f3f8f5; padding: 5px 8px; border-radius: 5px; }
+.highlight-note-editor textarea { width: 100%; box-sizing: border-box; font-size: 12px; padding: 6px 8px; border: 1px solid #c6d8cc; border-radius: 6px; resize: vertical; }
+.highlight-card-actions { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+.highlight-card-actions button { font-size: 11px; padding: 4px 8px; }
+.callout-quote { border-left: 3px solid #d4a72c; background: #fffdf2; padding: 8px 12px; border-radius: 6px; }

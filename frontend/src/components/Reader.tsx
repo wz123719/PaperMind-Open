@@ -8,8 +8,18 @@ import {ReadingPanel} from './ReadingPanel';
 import {ChatPanel} from './ChatPanel';
 import {NotesPanel} from './NotesPanel';
 import {TranslationPanel} from './TranslationPanel';
+import {HighlightsPanel} from './HighlightsPanel';
+import type {PassageSelection} from './TranslationDocument';
 import type {PaperSelection} from '../services/selection';
 import type {Identity} from '../services/chat';
+import {
+  HIGHLIGHT_COLORS,
+  createHighlight,
+  listHighlights,
+  saveHighlightsToNote,
+  type Highlight,
+  type HighlightColor,
+} from '../services/highlights';
 import '../reader.css';
 
 GlobalWorkerOptions.workerSrc=workerUrl;
@@ -25,7 +35,12 @@ export function Reader({paper,onBack}:{paper:Paper;onBack:()=>void}){
   const [notesOpen,setNotesOpen]=useState(false),[savedMessage,setSavedMessage]=useState<string|null>(null);
   const chatVisible=import.meta.env.VITE_PAPERMIND_INTERACTIVE_READING!=='0';
   const [showOutline,setShowOutline]=useState(true),[showReading,setShowReading]=useState(true);
-  const [sideMode,setSideMode]=useState<'reading'|'chat'>(()=>chatVisible&&sessionStorage.getItem('reader-side-'+paper.id)==='chat'?'chat':'reading');
+  const [sideMode,setSideMode]=useState<'reading'|'chat'|'highlights'>(()=>{
+    const saved=sessionStorage.getItem('reader-side-'+paper.id);
+    if(saved==='highlights')return 'highlights';
+    if(chatVisible&&saved==='chat')return 'chat';
+    return 'reading';
+  });
   const [parseOpen,setParseOpen]=useState(false);
   const pendingSource=useRef<{identity:Identity;regions:Region[];label:string}|null>(null);
   const [fid,setFid]=useState(()=>paper.files.find(f=>f.id===sessionStorage.getItem('reader-file-'+paper.id))?.id||paper.files[0]?.id||'');
@@ -37,6 +52,11 @@ export function Reader({paper,onBack}:{paper:Paper;onBack:()=>void}){
   const [formulas,setFormulas]=useState(true);
   const [sourcePreferred,setSourcePreferred]=useState(true),[source,setSource]=useState<SourceStatus|null>(null),[sourceJob,setSourceJob]=useState<Job|null>(null);
   const [regions,setRegions]=useState<Region[]>([]),[located,setLocated]=useState(''),[selection,setSelection]=useState<PaperSelection|null>(null);
+  const [passageSelection,setPassageSelection]=useState<PassageSelection|null>(null);
+  const [highlights,setHighlights]=useState<Highlight[]>([]);
+  const [hlColor,setHlColor]=useState<HighlightColor>('yellow');
+  const [hlNote,setHlNote]=useState(''),[hlSaving,setHlSaving]=useState(false);
+  const [hlNotice,setHlNotice]=useState<{text:string;noteId?:string}|null>(null);
   const [query,setQuery]=useState(''),[hits,setHits]=useState<SearchHit[]>([]),[searching,setSearching]=useState(false),[submitting,setSubmitting]=useState(false);
 
   useEffect(()=>{window.scrollTo(0,0)},[]);
@@ -62,11 +82,12 @@ export function Reader({paper,onBack}:{paper:Paper;onBack:()=>void}){
     if(!fid)return;
     setDoc(null);setPage(1);setRegions([]);setStructure(null);
     setViewRun(pendingSource.current?.identity.paper_file_id===fid?pendingSource.current.identity.parse_run_id:sessionStorage.getItem('reader-run-'+fid));
-    setCurrent(null);setRuns([]);setJob(null);setSource(null);setSourceJob(null);setError('');setSelection(null);setHits([]);setLocated('');
+    setCurrent(null);setRuns([]);setJob(null);setSource(null);setSourceJob(null);setError('');setSelection(null);setPassageSelection(null);setHighlights([]);setHlNotice(null);setHits([]);setLocated('');
     let live=true;
     const task=getDocument('/api/files/'+fid+'/content');
     task.promise.then(d=>{if(live)setDoc(d)}).catch(()=>{if(live)setError('PDF 无法打开')});
     void refreshParseState(fid).catch(e=>{if(live)setError(e.message)});
+    void listHighlights(fid).then(rows=>{if(live&&fileRef.current===fid)setHighlights(rows)}).catch(()=>{});
     return()=>{live=false;void task.destroy()};
   },[fid]);
 
@@ -119,7 +140,7 @@ export function Reader({paper,onBack}:{paper:Paper;onBack:()=>void}){
   async function cancelParse(){if(!job)return;try{setJob(await api<Job>(`/jobs/${job.id}/cancel`,{method:'POST'}))}catch(e){setError((e as Error).message)}}
   function locate(rs:Region[],label:string){setRegions(rs);setLocated(label);setSelection(null);if(rs.length)setPage(rs[0].page_index+1)}
   async function search(e:React.FormEvent){e.preventDefault();setSearching(true);setError('');try{const r=await api<{results:SearchHit[];truncated:boolean}>(`/v1/files/${fid}/search?q=${encodeURIComponent(query)}`);if(fileRef.current!==fid)return;setHits(r.results);if(r.results.length)locate(r.results[0].regions,query)}catch(e){if(fileRef.current===fid)setError((e as Error).message)}finally{setSearching(false)}}
-  useEffect(()=>{setSelection(null)},[fid,target,page]);
+  useEffect(()=>{setSelection(null);setPassageSelection(null)},[fid,target,page,readerMode]);
   useEffect(()=>{
     const src=pendingSource.current;
     if(src&&structure?.run.id===src.identity.parse_run_id&&fid===src.identity.paper_file_id){
@@ -139,6 +160,52 @@ export function Reader({paper,onBack}:{paper:Paper;onBack:()=>void}){
   const activeStructure=structure?.run.id===target&&structure.run.paper_file_id===fid?structure:null;
   const displayMode=activeStructure?readerMode:'original';
   const sections=[...(activeStructure?.sections||[])].sort((a,b)=>a.reading_order-b.reading_order);
+  const activeSelection = displayMode === 'original'
+    ? (selection ? {
+        text: selection.text,
+        page_index: selection.page_index,
+        regions: selection.client_regions?.length
+          ? selection.client_regions
+          : [{page_index: selection.page_index, bbox: [0.05, 0.05, 0.95, 0.14] as [number,number,number,number]}],
+        fromPdf: true,
+      } : null)
+    : (passageSelection ? {...passageSelection, fromPdf: false} : null);
+
+  async function saveActiveSelection(addToNote: boolean, colorOverride?: HighlightColor) {
+    if (!activeSelection || !fid || hlSaving) return;
+    setError('');
+    setHlNotice(null);
+    setHlSaving(true);
+    try {
+      const created = await createHighlight(fid, {
+        page_index: activeSelection.page_index,
+        text: activeSelection.text,
+        regions: activeSelection.regions,
+        color: colorOverride || hlColor,
+        note: hlNote.trim(),
+      });
+      setHighlights(prev => [...prev, created].sort((a, b) => a.page_index - b.page_index || a.created_at - b.created_at));
+      window.getSelection()?.removeAllRanges();
+      setSelection(null);
+      setPassageSelection(null);
+      setHlNote('');
+      if (addToNote) {
+        const saved = await saveHighlightsToNote({
+          highlight_ids: [created.id],
+          note_id: sessionStorage.getItem('note-selected-' + paper.id) || null,
+          parse_run_id: target,
+        });
+        sessionStorage.setItem('note-selected-' + paper.id, saved.note_id);
+        setHlNotice({text: `已高亮并加入知识笔记「${saved.section_title}」`, noteId: saved.note_id});
+      } else {
+        setHlNotice({text: `已持续高亮（第 ${created.page_index + 1} 页），可在右侧「高亮摘录」随时管理或加入笔记`});
+      }
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setHlSaving(false);
+    }
+  }
   function showOriginal(rs:Region[],label:string){if(!leaveTranslation())return;setReaderMode('original');locate(rs,label)}
   function jumpToSection(section:Structure['sections'][number]){
     setSelectedSection(section.id);
@@ -235,12 +302,36 @@ export function Reader({paper,onBack}:{paper:Paper;onBack:()=>void}){
       </aside>:<div/>}
 
       <section className="paper-content" aria-label="论文正文">
+        {hlNotice&&<div className="notice hl-toast" role="status">
+          <span>{hlNotice.text}</span>
+          <div className="hl-toast-actions">
+            {hlNotice.noteId&&<button type="button" className="primary" onClick={()=>{sessionStorage.setItem('note-selected-'+paper.id,hlNotice.noteId!);setSavedMessage(null);setNotesOpen(true)}}>打开知识笔记</button>}
+            <button type="button" onClick={()=>{setSideMode('highlights');setShowReading(true)}}>查看高亮 ({highlights.length})</button>
+            <button type="button" onClick={()=>setHlNotice(null)}>关闭</button>
+          </div>
+        </div>}
+        {activeSelection&&<output className="selected-text hl-selection-bar" aria-label="选中文字">
+          <div className="hl-selection-preview">
+            <strong>已划选（第 {activeSelection.page_index + 1} 页）：</strong>
+            <span>{activeSelection.text.slice(0,180)}{activeSelection.text.length>180?'…':''}</span>
+          </div>
+          <div className="hl-selection-controls">
+            <div className="hl-swatches" role="group" aria-label="选择高亮颜色">
+              {HIGHLIGHT_COLORS.map(c=><button key={c.id} type="button" className={`hl-swatch${hlColor===c.id?' active':''}`}
+                style={{backgroundColor:c.swatch}} title={c.label} aria-label={c.label} onClick={()=>setHlColor(c.id)}/>)}
+            </div>
+            <input className="hl-note-input" aria-label="高亮批注（可选）" placeholder="附一句批注（可选）…" value={hlNote} onChange={e=>setHlNote(e.target.value)}/>
+            <button type="button" disabled={hlSaving} onClick={()=>void saveActiveSelection(false)}>🖍 保持高亮</button>
+            <button type="button" className="primary" disabled={hlSaving} onClick={()=>void saveActiveSelection(true)}>✨ 高亮并加入笔记</button>
+            {activeSelection.fromPdf&&<button type="button" onClick={()=>{setSideMode('chat');setShowReading(true)}}>针对选段提问 →</button>}
+            <button type="button" onClick={()=>{window.getSelection()?.removeAllRanges();setSelection(null);setPassageSelection(null)}}>取消</button>
+          </div>
+        </output>}
         {displayMode!=='original'&&activeStructure&&<TranslationPanel key={activeStructure.run.id} structure={activeStructure} paperId={paper.id}
-          bilingual={displayMode==='bilingual'} onLocate={showOriginal} onDirty={setTranslationDirty}/>}
+          bilingual={displayMode==='bilingual'} highlights={highlights} onSelectPassage={setPassageSelection} onLocate={showOriginal} onDirty={setTranslationDirty}/>}
         {displayMode==='original'&&<div className="reading-area">
-          {located&&<div className="located" role="status"><span>定位：{located.slice(0,90)}</span>{regions.map((r,n)=><button key={n} onClick={()=>setPage(r.page_index+1)}>区域 {n+1} · 第 {r.page_index+1} 页</button>)}<button onClick={()=>{setRegions([]);setLocated('')}}>清除高亮</button></div>}
-          {selection&&<output className="selected-text" aria-label="选中文字">已划选：{selection.text.slice(0,160)} <button type="button" onClick={()=>{setSideMode('chat');setShowReading(true)}}>针对选段提问 →</button></output>}
-          <div className="pdf-stage">{doc?<PdfPage doc={doc} page={page} scale={scale} rotation={rotation} regions={regions} onSelection={setSelection} identity={{paper_file_id:fid,parse_run_id:target||'',file_sha256:paper.files.find(f=>f.id===fid)?.sha256||''}}/>:<p>正在加载 PDF…</p>}</div>
+          {located&&<div className="located" role="status"><span>定位：{located.slice(0,90)}</span>{regions.map((r,n)=><button key={n} onClick={()=>setPage(r.page_index+1)}>区域 {n+1} · 第 {r.page_index+1} 页</button>)}<button onClick={()=>{setRegions([]);setLocated('')}}>清除定位</button></div>}
+          <div className="pdf-stage">{doc?<PdfPage doc={doc} page={page} scale={scale} rotation={rotation} regions={regions} highlights={highlights} onSelection={setSelection} identity={{paper_file_id:fid,parse_run_id:target||'',file_sha256:paper.files.find(f=>f.id===fid)?.sha256||''}}/>:<p>正在加载 PDF…</p>}</div>
         </div>}
       </section>
 
@@ -248,9 +339,12 @@ export function Reader({paper,onBack}:{paper:Paper;onBack:()=>void}){
         <nav className="paper-ai-tabs" aria-label="AI 工作区">
           <button type="button" aria-pressed={sideMode==='reading'} onClick={()=>setSideMode('reading')}>AI 综合精读</button>
           {chatVisible&&<button type="button" aria-pressed={sideMode==='chat'} onClick={()=>setSideMode('chat')}>论文问答</button>}
+          <button type="button" aria-pressed={sideMode==='highlights'} onClick={()=>setSideMode('highlights')}>高亮摘录 ({highlights.length})</button>
         </nav>
         {sideMode==='reading'
           ?<ReadingPanel key={fid+':'+target} parseId={target} fileId={fid} onLocate={showOriginal} onNote={id=>{sessionStorage.setItem('note-selected-'+paper.id,id);setSavedMessage(null);setNotesOpen(true)}} compact/>
+          :sideMode==='highlights'
+          ?<HighlightsPanel paperId={paper.id} parseId={target} highlights={highlights} onChange={setHighlights} onLocate={showOriginal} onOpenNote={id=>{sessionStorage.setItem('note-selected-'+paper.id,id);setSavedMessage(null);setNotesOpen(true)}}/>
           :<ChatPanel onSaveAnswer={id=>{setSavedMessage(id);setNotesOpen(true)}} paperId={paper.id} fileId={fid} parseId={target} pageIndex={page-1} selection={selection} onClear={()=>setSelection(null)} onLocate={locateChat}/>}
       </div>:<div/>}
     </div>

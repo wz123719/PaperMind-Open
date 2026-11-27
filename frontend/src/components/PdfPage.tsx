@@ -1,11 +1,12 @@
 import {memo,useEffect,useRef,useState} from 'react';
 import {TextLayer,type PDFDocumentProxy,type PageViewport} from 'pdfjs-dist';
 import type {Region} from '../services/api';
+import type {Highlight} from '../services/highlights';
 import {regionToViewport} from '../services/coordinates';
 import {captureSelection,type PaperSelection,type SelectionIdentity} from '../services/selection';
 import 'pdfjs-dist/web/pdf_viewer.css';
 
-export const PdfPage = memo(function PdfPage({doc,page,scale,rotation,regions,onSelection,identity}:{doc:PDFDocumentProxy;page:number;scale:number;rotation:number;regions:Region[];identity:SelectionIdentity;onSelection:(s:PaperSelection|null)=>void}){
+export const PdfPage = memo(function PdfPage({doc,page,scale,rotation,regions,highlights=[],onSelection,identity}:{doc:PDFDocumentProxy;page:number;scale:number;rotation:number;regions:Region[];highlights?:Highlight[];identity:SelectionIdentity;onSelection:(s:PaperSelection|null)=>void}){
   const canvas=useRef<HTMLCanvasElement>(null),text=useRef<HTMLDivElement>(null),shell=useRef<HTMLDivElement>(null);
   const [layout,setLayout]=useState<{view:number[];viewport:PageViewport}|null>(null),[error,setError]=useState('');
   const pendingScroll=useRef(false);
@@ -40,7 +41,7 @@ export const PdfPage = memo(function PdfPage({doc,page,scale,rotation,regions,on
   },[doc,page,scale,rotation]);
   useEffect(()=>{
     if(pendingScroll.current&&layout){
-      const target=shell.current?.querySelector('.region-highlight');
+      const target=shell.current?.querySelector('.locate-highlight');
       if(target){target.scrollIntoView({block:'center',inline:'center'});pendingScroll.current=false}
     }
   },[regions,layout]);
@@ -60,7 +61,10 @@ export const PdfPage = memo(function PdfPage({doc,page,scale,rotation,regions,on
   }
   return <>{error&&<p className="error" role="alert">{error}</p>}<div ref={shell} className="page-shell" style={layout?{width:layout.viewport.width,height:layout.viewport.height}:undefined}>
     <canvas ref={canvas} aria-label={`PDF 第 ${page} 页`}/>
-    <div className="highlight-layer" aria-label="定位高亮">{layout&&regions.filter(r=>r.page_index===page-1).map((r,n)=><div key={n} className="region-highlight" data-testid="region-highlight" style={regionToViewport(r,layout.view,layout.viewport)}/>)}</div>
+    <div className="highlight-layer" aria-label="定位与持久高亮">
+      {layout&&highlights.flatMap(hl=>hl.regions.filter(r=>r.page_index===page-1).map((r,idx)=><div key={`hl-${hl.id}-${idx}`} className={`region-highlight persistent-highlight hl-${hl.color}`} data-highlight-id={hl.id} title={hl.note?`${hl.text}\n批注：${hl.note}`:hl.text} style={regionToViewport(r,layout.view,layout.viewport)}/>))}
+      {layout&&regions.filter(r=>r.page_index===page-1).map((r,n)=><div key={`loc-${n}`} className="region-highlight locate-highlight" data-testid="region-highlight" style={regionToViewport(r,layout.view,layout.viewport)}/>)}
+    </div>
     <div ref={text} className="textLayer" aria-label="PDF 可选文字层" onMouseUp={selected} onKeyUp={selected}/>
   </div></>;
 });

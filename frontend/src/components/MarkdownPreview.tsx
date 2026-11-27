@@ -1,7 +1,39 @@
 import {memo,type ReactNode} from 'react';
 import {renderMathHtml,safeNoteUrl,type Asset} from '../services/notes';
 
-export function InlineRichText({text,assets=[]}:{text:string;assets?:Asset[]}){
+type TextHighlight={text:string;color:string};
+
+function renderWithHighlights(segment:string,highlights:TextHighlight[],keyPrefix:string):ReactNode{
+  if(!highlights.length||segment.length<2)return <span key={keyPrefix}>{segment}</span>;
+  const spans:{start:number;end:number;color:string}[]=[];
+  const sorted=[...highlights].filter(h=>h.text&&h.text.trim().length>=2).sort((a,b)=>b.text.length-a.text.length);
+  for(const hl of sorted){
+    const needle=hl.text.trim();
+    let pos=0;
+    while(pos<segment.length){
+      const idx=segment.indexOf(needle,pos);
+      if(idx===-1)break;
+      const end=idx+needle.length;
+      if(!spans.some(s=>idx<s.end&&end>s.start)){
+        spans.push({start:idx,end,color:hl.color});
+      }
+      pos=end;
+    }
+  }
+  if(!spans.length)return <span key={keyPrefix}>{segment}</span>;
+  spans.sort((a,b)=>a.start-b.start);
+  const nodes:ReactNode[]=[];
+  let cursor=0;
+  spans.forEach((sp,idx)=>{
+    if(sp.start>cursor)nodes.push(<span key={`${keyPrefix}-t-${idx}`}>{segment.slice(cursor,sp.start)}</span>);
+    nodes.push(<mark key={`${keyPrefix}-h-${idx}`} className={`inline-hl hl-${sp.color}`}>{segment.slice(sp.start,sp.end)}</mark>);
+    cursor=sp.end;
+  });
+  if(cursor<segment.length)nodes.push(<span key={`${keyPrefix}-tail`}>{segment.slice(cursor)}</span>);
+  return <span key={keyPrefix}>{nodes}</span>;
+}
+
+export function InlineRichText({text,assets=[],highlights=[]}:{text:string;assets?:Asset[];highlights?:TextHighlight[]}){
   const parts=text.split(/(!?\[[^\]]*\]\([^)]+\)|\[\[[^\]]+\]\]|`[^`]+`|\*\*[^*]+\*\*|\$\$[^$\n]+\$\$|\$(?:\\.|[^$\n])+\$|\\\([^\n]+?\\\))/g);
   return <>{parts.map((t,i)=>{
     if(!t)return null;
@@ -26,7 +58,7 @@ export function InlineRichText({text,assets=[]}:{text:string;assets?:Asset[]}){
       const html=renderMathHtml(raw,isDisplay);
       return html?<span key={i} className="math-rendered" dangerouslySetInnerHTML={{__html:html}}/>:<code className="note-math" key={i}>{t}</code>;
     }
-    return <span key={i}>{t}</span>;
+    return renderWithHighlights(t,highlights,String(i));
   })}</>;
 }
 
@@ -75,7 +107,7 @@ export const MarkdownPreview=memo(function MarkdownPreview({text,assets=[]}:{tex
       while(j<lines.length&&lines[j].startsWith('>')&&(lines[j].length===1||lines[j][1]===' ')){
         quoted.push(lines[j].slice(lines[j].startsWith('> ')?2:1));j++;
       }
-      const callout=/^\[!(abstract|important|note|tip|warning)\]\s*(.*)$/i.exec(quoted[0]);
+      const callout=/^\[!(abstract|important|note|tip|warning|quote)\]\s*(.*)$/i.exec(quoted[0]);
       out.push(<blockquote key={key} className={callout?`callout callout-${callout[1].toLowerCase()}`:''}>
         {callout&&<strong>{inline(callout[2]||callout[1])}</strong>}
         {(callout?quoted.slice(1):quoted).filter(q=>q.trim()!=='').map((q,n)=><p key={n}>{inline(q)}</p>)}

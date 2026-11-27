@@ -77,6 +77,8 @@ from .notes_api import router as notes_router
 app.include_router(notes_router)
 from .translation_api import router as translation_router
 app.include_router(translation_router)
+from .highlights import router as highlights_router, delete_for_paper as delete_highlights_for_paper
+app.include_router(highlights_router)
 
 def paper_detail(pid, conn):
     row = conn.execute(select(papers).where(papers.c.id == pid)).mappings().first()
@@ -182,6 +184,7 @@ def delete_paper(pid: str):
             conn.execute(document_sections.delete().where(document_sections.c.parse_run_id.in_(prids)))
             conn.execute(parse_runs.delete().where(parse_runs.c.id.in_(prids)))
         conn.execute(glossary_versions.delete().where(glossary_versions.c.paper_id == pid))
+        delete_highlights_for_paper(conn, pid)
         if fids:
             conn.execute(paper_files.delete().where(paper_files.c.id.in_(fids)))
         conn.execute(papers.delete().where(papers.c.id == pid))

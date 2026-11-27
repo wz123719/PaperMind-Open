@@ -226,6 +226,11 @@ def evidence(snap):
     result=[]
     for s in snap['sections']:
         for origin in s['origins']:
+            if origin['kind']=='highlight':
+                result.append({'section_id':s['id'],'manual':s['manual'],'source_version':origin.get('source_version','pdf-highlight-v1'),
+                    'claim':origin.get('note') or '原文高亮摘录','verification':'unreviewed','matched':True,
+                    'quote':origin.get('quote',''),'regions':origin.get('regions',[])})
+                continue
             if origin['kind']=='chat':claims=origin['message']['data'].get('claims',[])
             else:claims=[c for stage in origin['report']['sections'] for c in stage['claims']]
             for claim in claims:

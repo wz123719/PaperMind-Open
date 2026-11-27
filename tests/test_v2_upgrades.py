@@ -185,3 +185,77 @@ def test_three_rule_booktabs_algorithm_recognized_and_preserved_without_needs_re
     assert translation.units({'id': 'a1', 'type': 'algorithm', 'text': '\n'.join(lines), 'data': {}})[1] == 'preserved'
     assert translation.units({'id': 'a2', 'type': 'algorithm_step', 'text': '4: if leaf(v) then return SplitText(v, B)', 'quality_flags': ['content_unverified'], 'data': {}})[1] == 'preserved'
     assert translation.units({'id': 't1', 'type': 'table', 'text': 'Algorithm 1 Sectioning\n1: Procedure: P\n2: Output: K\n3: if x then return [v]\n4: end if', 'data': {}})[1] == 'preserved'
+
+
+def test_persistent_highlights_and_save_to_note_workflow(client, tmp_path):
+    f = uploaded(client)
+    fid, pid = f['file_id'], f['paper_id']
+
+    # 1. Create two persistent highlights
+    r1 = client.post(f'/v1/files/{fid}/highlights', json={
+        'page_index': 0,
+        'text': 'We introduce a lightweight sparse attention block.',
+        'regions': [{'page_index': 0, 'bbox': [0.1, 0.2, 0.85, 0.24]}],
+        'color': 'yellow',
+        'note': '核心创新点',
+    })
+    assert r1.status_code == 201
+    h1 = r1.json()
+    assert h1['color'] == 'yellow' and h1['note'] == '核心创新点'
+
+    r2 = client.post(f'/v1/files/{fid}/highlights', json={
+        'page_index': 0,
+        'text': 'Our model reduces latency by 3.2x.',
+        'regions': [{'page_index': 0, 'bbox': [0.1, 0.35, 0.72, 0.39]}],
+        'color': 'green',
+    })
+    assert r2.status_code == 201
+    h2 = r2.json()
+
+    # 2. List & update highlight
+    listed = client.get(f'/v1/files/{fid}/highlights')
+    assert listed.status_code == 200 and len(listed.json()) == 2
+    patched = client.patch(f"/v1/highlights/{h2['id']}", json={'color': 'blue', 'note': '关键性能数据'})
+    assert patched.status_code == 200 and patched.json()['color'] == 'blue' and patched.json()['note'] == '关键性能数据'
+
+    # 3. Save first highlight to note (auto-creates a paper note)
+    saved1 = client.post('/v1/highlights/save-to-note', json={'highlight_ids': [h1['id']]})
+    assert saved1.status_code == 200
+    body1 = saved1.json()
+    nid = body1['note_id']
+    assert body1['count'] == 1
+    assert '> [!quote] 原文高亮 · 第 1 页' in body1['revision']['markdown']
+    assert 'We introduce a lightweight sparse attention block.' in body1['revision']['markdown']
+    assert '**批注**：核心创新点' in body1['revision']['markdown']
+
+    # 4. Append second highlight to a specific section of the same note
+    saved2 = client.post('/v1/highlights/save-to-note', json={
+        'highlight_ids': [h2['id']],
+        'note_id': nid,
+        'section_id': 's02',
+    })
+    assert saved2.status_code == 200 and saved2.json()['section_id'] == 's02'
+
+    # 5. Evidence endpoint and Obsidian same-title sync handle highlight origins cleanly
+    ev = client.get(f'/v1/notes/{nid}/evidence')
+    assert ev.status_code == 200
+    quotes = [e['quote'] for e in ev.json()['evidence']]
+    assert 'We introduce a lightweight sparse attention block.' in quotes
+    assert 'Our model reduces latency by 3.2x.' in quotes
+
+    vault = tmp_path / 'obsidian-hl'
+    vault.mkdir()
+    assert client.post('/v1/vault-settings', json={'root': str(vault), 'subdir': 'Papers', 'expected_revision': None}).status_code == 200
+    sync = client.post(f'/v1/notes/{nid}/sync-obsidian', json={'bundle_pdf': False, 'force_overwrite': False})
+    assert sync.status_code == 200
+    md_path = vault / 'Papers' / sync.json()['plan']['target']
+    assert md_path.is_file()
+    md_text = md_path.read_text(encoding='utf-8')
+    assert '> [!quote] 原文高亮 · 第 1 页' in md_text
+    assert 'Our model reduces latency by 3.2x.' in md_text
+
+    # 6. Delete single highlight and cascade cleanup on delete_paper
+    assert client.delete(f"/v1/highlights/{h1['id']}").status_code == 200
+    assert len(client.get(f'/v1/files/{fid}/highlights').json()) == 1
+    assert client.delete(f'/papers/{pid}').status_code == 200
+    assert client.get(f'/v1/files/{fid}/highlights').status_code == 404
