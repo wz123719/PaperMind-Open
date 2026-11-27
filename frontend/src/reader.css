@@ -103,9 +103,16 @@
 .persistent-highlight.hl-green { background: rgba(112, 214, 146, 0.42); border-bottom: 1.5px solid rgba(46, 158, 86, 0.7); }
 .persistent-highlight.hl-blue { background: rgba(116, 185, 255, 0.42); border-bottom: 1.5px solid rgba(48, 128, 214, 0.7); }
 .persistent-highlight.hl-pink { background: rgba(255, 148, 189, 0.42); border-bottom: 1.5px solid rgba(214, 72, 124, 0.7); }
+.persistent-highlight.active-hl { outline: 2px solid #c94646; box-shadow: 0 0 0 2px rgba(201, 70, 70, 0.18); }
 .locate-highlight { background: rgba(255, 196, 36, 0.42); border: 1.5px solid #d98200; }
 
 mark.inline-hl { padding: 0 2px; border-radius: 3px; color: inherit; }
+mark.inline-hl.clickable { cursor: pointer; transition: filter 0.12s ease; }
+mark.inline-hl.clickable:hover { filter: brightness(0.92); outline: 1px dashed rgba(32, 48, 38, 0.45); }
+.hl-manage-bar { background: #fffaf0; border-bottom-color: #ebd6a7; }
+.hl-manage-note { color: #5a4a24; font-style: normal; }
+.hl-danger-btn { color: #a82828 !important; border: 1px solid #e7b8b8 !important; background: #fff5f5 !important; }
+.hl-danger-btn:hover { background: #ffe5e5 !important; }
 mark.inline-hl.hl-yellow { background: #fff099; }
 mark.inline-hl.hl-green { background: #c9f2d6; }
 mark.inline-hl.hl-blue { background: #cce5ff; }

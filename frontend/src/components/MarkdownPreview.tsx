@@ -1,11 +1,11 @@
 import {memo,type ReactNode} from 'react';
 import {renderMathHtml,safeNoteUrl,type Asset} from '../services/notes';
 
-type TextHighlight={text:string;color:string};
+type TextHighlight={id?:string;text:string;color:string};
 
-function renderWithHighlights(segment:string,highlights:TextHighlight[],keyPrefix:string):ReactNode{
+function renderWithHighlights(segment:string,highlights:TextHighlight[],keyPrefix:string,onHighlightClick?:(id:string)=>void):ReactNode{
   if(!highlights.length||segment.length<2)return <span key={keyPrefix}>{segment}</span>;
-  const spans:{start:number;end:number;color:string}[]=[];
+  const spans:{start:number;end:number;color:string;id?:string}[]=[];
   const sorted=[...highlights].filter(h=>h.text&&h.text.trim().length>=2).sort((a,b)=>b.text.length-a.text.length);
   for(const hl of sorted){
     const needle=hl.text.trim();
@@ -15,7 +15,7 @@ function renderWithHighlights(segment:string,highlights:TextHighlight[],keyPrefi
       if(idx===-1)break;
       const end=idx+needle.length;
       if(!spans.some(s=>idx<s.end&&end>s.start)){
-        spans.push({start:idx,end,color:hl.color});
+        spans.push({start:idx,end,color:hl.color,id:hl.id});
       }
       pos=end;
     }
@@ -26,14 +26,28 @@ function renderWithHighlights(segment:string,highlights:TextHighlight[],keyPrefi
   let cursor=0;
   spans.forEach((sp,idx)=>{
     if(sp.start>cursor)nodes.push(<span key={`${keyPrefix}-t-${idx}`}>{segment.slice(cursor,sp.start)}</span>);
-    nodes.push(<mark key={`${keyPrefix}-h-${idx}`} className={`inline-hl hl-${sp.color}`}>{segment.slice(sp.start,sp.end)}</mark>);
+    nodes.push(
+      <mark
+        key={`${keyPrefix}-h-${idx}`}
+        className={`inline-hl hl-${sp.color}${onHighlightClick&&sp.id?' clickable':''}`}
+        title={onHighlightClick&&sp.id?'点击管理、换色或取消高亮':undefined}
+        onClick={onHighlightClick&&sp.id?(e)=>{
+          const sel=window.getSelection();
+          if(sel&&!sel.isCollapsed&&sel.toString().trim().length>0)return;
+          e.stopPropagation();
+          onHighlightClick(sp.id!);
+        }:undefined}
+      >
+        {segment.slice(sp.start,sp.end)}
+      </mark>,
+    );
     cursor=sp.end;
   });
   if(cursor<segment.length)nodes.push(<span key={`${keyPrefix}-tail`}>{segment.slice(cursor)}</span>);
   return <span key={keyPrefix}>{nodes}</span>;
 }
 
-export function InlineRichText({text,assets=[],highlights=[]}:{text:string;assets?:Asset[];highlights?:TextHighlight[]}){
+export function InlineRichText({text,assets=[],highlights=[],onHighlightClick}:{text:string;assets?:Asset[];highlights?:TextHighlight[];onHighlightClick?:(id:string)=>void}){
   const parts=text.split(/(!?\[[^\]]*\]\([^)]+\)|\[\[[^\]]+\]\]|`[^`]+`|\*\*[^*]+\*\*|\$\$[^$\n]+\$\$|\$(?:\\.|[^$\n])+\$|\\\([^\n]+?\\\))/g);
   return <>{parts.map((t,i)=>{
     if(!t)return null;
@@ -58,7 +72,7 @@ export function InlineRichText({text,assets=[],highlights=[]}:{text:string;asset
       const html=renderMathHtml(raw,isDisplay);
       return html?<span key={i} className="math-rendered" dangerouslySetInnerHTML={{__html:html}}/>:<code className="note-math" key={i}>{t}</code>;
     }
-    return renderWithHighlights(t,highlights,String(i));
+    return renderWithHighlights(t,highlights,String(i),onHighlightClick);
   })}</>;
 }
 

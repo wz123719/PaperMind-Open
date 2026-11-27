@@ -2,6 +2,7 @@ import {useEffect,useState} from 'react';
 import type {Region} from '../services/api';
 import {
   HIGHLIGHT_COLORS,
+  clearHighlights,
   deleteHighlight,
   saveHighlightsToNote,
   updateHighlight,
@@ -12,6 +13,7 @@ import {noteApi,type NoteRevision,type NoteRow} from '../services/notes';
 
 export function HighlightsPanel({
   paperId,
+  fileId,
   parseId,
   highlights,
   onChange,
@@ -19,6 +21,7 @@ export function HighlightsPanel({
   onOpenNote,
 }: {
   paperId: string;
+  fileId: string;
   parseId: string | null;
   highlights: Highlight[];
   onChange: (next: Highlight[]) => void;
@@ -111,6 +114,23 @@ export function HighlightsPanel({
       await deleteHighlight(hl.id);
       onChange(highlights.filter(item => item.id !== hl.id));
       if (editingId === hl.id) setEditingId(null);
+      setStatus({text: '已取消该条高亮'});
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleClearAll() {
+    if (!highlights.length || !window.confirm(`确定清空本篇论文的全部 ${highlights.length} 条高亮吗？`)) return;
+    setError('');
+    setBusyId('clear-all');
+    try {
+      await clearHighlights(fileId);
+      onChange([]);
+      setEditingId(null);
+      setStatus({text: '已清空本篇论文全部高亮'});
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -195,6 +215,11 @@ export function HighlightsPanel({
           {noteId && (
             <button type="button" onClick={() => onOpenNote(noteId)}>
               打开知识笔记
+            </button>
+          )}
+          {highlights.length > 0 && (
+            <button type="button" className="hl-danger-btn" disabled={busyId !== null} onClick={() => void handleClearAll()}>
+              清空全部高亮
             </button>
           )}
         </div>
@@ -301,10 +326,11 @@ export function HighlightsPanel({
                 </button>
                 <button
                   type="button"
+                  className="hl-danger-btn"
                   disabled={busyId === hl.id}
                   onClick={() => void handleDelete(hl)}
                 >
-                  删除
+                  ✕ 取消高亮
                 </button>
               </div>
             </article>

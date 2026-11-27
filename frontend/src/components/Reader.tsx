@@ -15,8 +15,10 @@ import type {Identity} from '../services/chat';
 import {
   HIGHLIGHT_COLORS,
   createHighlight,
+  deleteHighlight,
   listHighlights,
   saveHighlightsToNote,
+  updateHighlight,
   type Highlight,
   type HighlightColor,
 } from '../services/highlights';
@@ -54,6 +56,7 @@ export function Reader({paper,onBack}:{paper:Paper;onBack:()=>void}){
   const [regions,setRegions]=useState<Region[]>([]),[located,setLocated]=useState(''),[selection,setSelection]=useState<PaperSelection|null>(null);
   const [passageSelection,setPassageSelection]=useState<PassageSelection|null>(null);
   const [highlights,setHighlights]=useState<Highlight[]>([]);
+  const [activeHighlightId,setActiveHighlightId]=useState<string|null>(null);
   const [hlColor,setHlColor]=useState<HighlightColor>('yellow');
   const [hlNote,setHlNote]=useState(''),[hlSaving,setHlSaving]=useState(false);
   const [hlNotice,setHlNotice]=useState<{text:string;noteId?:string}|null>(null);
@@ -140,7 +143,7 @@ export function Reader({paper,onBack}:{paper:Paper;onBack:()=>void}){
   async function cancelParse(){if(!job)return;try{setJob(await api<Job>(`/jobs/${job.id}/cancel`,{method:'POST'}))}catch(e){setError((e as Error).message)}}
   function locate(rs:Region[],label:string){setRegions(rs);setLocated(label);setSelection(null);if(rs.length)setPage(rs[0].page_index+1)}
   async function search(e:React.FormEvent){e.preventDefault();setSearching(true);setError('');try{const r=await api<{results:SearchHit[];truncated:boolean}>(`/v1/files/${fid}/search?q=${encodeURIComponent(query)}`);if(fileRef.current!==fid)return;setHits(r.results);if(r.results.length)locate(r.results[0].regions,query)}catch(e){if(fileRef.current===fid)setError((e as Error).message)}finally{setSearching(false)}}
-  useEffect(()=>{setSelection(null);setPassageSelection(null)},[fid,target,page,readerMode]);
+  useEffect(()=>{setSelection(null);setPassageSelection(null);setActiveHighlightId(null)},[fid,target,page,readerMode]);
   useEffect(()=>{
     const src=pendingSource.current;
     if(src&&structure?.run.id===src.identity.parse_run_id&&fid===src.identity.paper_file_id){
@@ -170,6 +173,68 @@ export function Reader({paper,onBack}:{paper:Paper;onBack:()=>void}){
         fromPdf: true,
       } : null)
     : (passageSelection ? {...passageSelection, fromPdf: false} : null);
+
+  const activeHighlight = activeHighlightId ? highlights.find(h => h.id === activeHighlightId) || null : null;
+  const overlappingHighlight = activeSelection ? highlights.find(h => {
+    const sel = activeSelection.text.trim();
+    const cur = h.text.trim();
+    if (!sel || !cur) return false;
+    const samePage = displayMode !== 'original' || h.page_index === activeSelection.page_index;
+    return samePage && (cur === sel || cur.includes(sel) || sel.includes(cur));
+  }) || null : null;
+
+  async function removeHighlightById(hid: string) {
+    if (hlSaving) return;
+    setError('');
+    setHlSaving(true);
+    try {
+      await deleteHighlight(hid);
+      setHighlights(prev => prev.filter(h => h.id !== hid));
+      if (activeHighlightId === hid) setActiveHighlightId(null);
+      window.getSelection()?.removeAllRanges();
+      setSelection(null);
+      setPassageSelection(null);
+      setHlNotice({text: '已取消该条高亮'});
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setHlSaving(false);
+    }
+  }
+
+  async function recolorActiveHighlight(hid: string, color: HighlightColor) {
+    if (hlSaving) return;
+    setError('');
+    setHlSaving(true);
+    try {
+      const updated = await updateHighlight(hid, {color});
+      setHighlights(prev => prev.map(h => (h.id === hid ? updated : h)));
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setHlSaving(false);
+    }
+  }
+
+  async function addExistingHighlightToNote(hl: Highlight) {
+    if (hlSaving) return;
+    setError('');
+    setHlSaving(true);
+    try {
+      const saved = await saveHighlightsToNote({
+        highlight_ids: [hl.id],
+        note_id: sessionStorage.getItem('note-selected-' + paper.id) || null,
+        parse_run_id: target,
+      });
+      sessionStorage.setItem('note-selected-' + paper.id, saved.note_id);
+      setHlNotice({text: `已加入知识笔记「${saved.section_title}」`, noteId: saved.note_id});
+      setActiveHighlightId(null);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setHlSaving(false);
+    }
+  }
 
   async function saveActiveSelection(addToNote: boolean, colorOverride?: HighlightColor) {
     if (!activeSelection || !fid || hlSaving) return;
@@ -323,15 +388,33 @@ export function Reader({paper,onBack}:{paper:Paper;onBack:()=>void}){
             <input className="hl-note-input" aria-label="高亮批注（可选）" placeholder="附一句批注（可选）…" value={hlNote} onChange={e=>setHlNote(e.target.value)}/>
             <button type="button" disabled={hlSaving} onClick={()=>void saveActiveSelection(false)}>🖍 保持高亮</button>
             <button type="button" className="primary" disabled={hlSaving} onClick={()=>void saveActiveSelection(true)}>✨ 高亮并加入笔记</button>
+            {overlappingHighlight&&<button type="button" className="hl-danger-btn" disabled={hlSaving} onClick={()=>void removeHighlightById(overlappingHighlight.id)}>✕ 取消已有高亮</button>}
             {activeSelection.fromPdf&&<button type="button" onClick={()=>{setSideMode('chat');setShowReading(true)}}>针对选段提问 →</button>}
             <button type="button" onClick={()=>{window.getSelection()?.removeAllRanges();setSelection(null);setPassageSelection(null)}}>取消</button>
           </div>
         </output>}
+        {!activeSelection&&activeHighlight&&<div className="selected-text hl-selection-bar hl-manage-bar" role="region" aria-label="管理当前高亮">
+          <div className="hl-selection-preview">
+            <strong>当前高亮（第 {activeHighlight.page_index + 1} 页）：</strong>
+            <span>{activeHighlight.text.slice(0,180)}{activeHighlight.text.length>180?'…':''}</span>
+            {activeHighlight.note&&<em className="hl-manage-note"> · 批注：{activeHighlight.note}</em>}
+          </div>
+          <div className="hl-selection-controls">
+            <div className="hl-swatches" role="group" aria-label="切换高亮颜色">
+              {HIGHLIGHT_COLORS.map(c=><button key={c.id} type="button" className={`hl-swatch${activeHighlight.color===c.id?' active':''}`}
+                style={{backgroundColor:c.swatch}} title={`换为${c.label}`} aria-label={`换为${c.label}`} disabled={hlSaving}
+                onClick={()=>void recolorActiveHighlight(activeHighlight.id,c.id)}/>)}
+            </div>
+            <button type="button" className="primary" disabled={hlSaving} onClick={()=>void addExistingHighlightToNote(activeHighlight)}>＋ 加入知识笔记</button>
+            <button type="button" className="hl-danger-btn" disabled={hlSaving} onClick={()=>void removeHighlightById(activeHighlight.id)}>✕ 取消高亮</button>
+            <button type="button" onClick={()=>setActiveHighlightId(null)}>关闭</button>
+          </div>
+        </div>}
         {displayMode!=='original'&&activeStructure&&<TranslationPanel key={activeStructure.run.id} structure={activeStructure} paperId={paper.id}
-          bilingual={displayMode==='bilingual'} highlights={highlights} onSelectPassage={setPassageSelection} onLocate={showOriginal} onDirty={setTranslationDirty}/>}
+          bilingual={displayMode==='bilingual'} highlights={highlights} onSelectPassage={sel=>{setPassageSelection(sel);if(sel)setActiveHighlightId(null)}} onHighlightClick={id=>setActiveHighlightId(id)} onLocate={showOriginal} onDirty={setTranslationDirty}/>}
         {displayMode==='original'&&<div className="reading-area">
           {located&&<div className="located" role="status"><span>定位：{located.slice(0,90)}</span>{regions.map((r,n)=><button key={n} onClick={()=>setPage(r.page_index+1)}>区域 {n+1} · 第 {r.page_index+1} 页</button>)}<button onClick={()=>{setRegions([]);setLocated('')}}>清除定位</button></div>}
-          <div className="pdf-stage">{doc?<PdfPage doc={doc} page={page} scale={scale} rotation={rotation} regions={regions} highlights={highlights} onSelection={setSelection} identity={{paper_file_id:fid,parse_run_id:target||'',file_sha256:paper.files.find(f=>f.id===fid)?.sha256||''}}/>:<p>正在加载 PDF…</p>}</div>
+          <div className="pdf-stage">{doc?<PdfPage doc={doc} page={page} scale={scale} rotation={rotation} regions={regions} highlights={highlights} activeHighlightId={activeHighlightId} onHighlightClick={id=>setActiveHighlightId(id)} onSelection={setSelection} identity={{paper_file_id:fid,parse_run_id:target||'',file_sha256:paper.files.find(f=>f.id===fid)?.sha256||''}}/>:<p>正在加载 PDF…</p>}</div>
         </div>}
       </section>
 
@@ -344,7 +427,7 @@ export function Reader({paper,onBack}:{paper:Paper;onBack:()=>void}){
         {sideMode==='reading'
           ?<ReadingPanel key={fid+':'+target} parseId={target} fileId={fid} onLocate={showOriginal} onNote={id=>{sessionStorage.setItem('note-selected-'+paper.id,id);setSavedMessage(null);setNotesOpen(true)}} compact/>
           :sideMode==='highlights'
-          ?<HighlightsPanel paperId={paper.id} parseId={target} highlights={highlights} onChange={setHighlights} onLocate={showOriginal} onOpenNote={id=>{sessionStorage.setItem('note-selected-'+paper.id,id);setSavedMessage(null);setNotesOpen(true)}}/>
+          ?<HighlightsPanel paperId={paper.id} fileId={fid} parseId={target} highlights={highlights} onChange={setHighlights} onLocate={showOriginal} onOpenNote={id=>{sessionStorage.setItem('note-selected-'+paper.id,id);setSavedMessage(null);setNotesOpen(true)}}/>
           :<ChatPanel onSaveAnswer={id=>{setSavedMessage(id);setNotesOpen(true)}} paperId={paper.id} fileId={fid} parseId={target} pageIndex={page-1} selection={selection} onClear={()=>setSelection(null)} onLocate={locateChat}/>}
       </div>:<div/>}
     </div>

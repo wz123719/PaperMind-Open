@@ -147,6 +147,15 @@ def delete_highlight(hid: str) -> dict:
     return {'deleted': hid}
 
 
+def clear_for_file(fid: str) -> dict:
+    with write_tx() as conn:
+        ensure_table(conn)
+        if not conn.execute(select(paper_files.c.id).where(paper_files.c.id == fid)).scalar():
+            raise LookupError('文件不存在')
+        res = conn.execute(text('DELETE FROM paper_highlights WHERE paper_file_id = :fid'), {'fid': fid})
+    return {'deleted_count': res.rowcount}
+
+
 def delete_for_paper(conn, paper_id: str) -> None:
     ensure_table(conn)
     conn.execute(text('DELETE FROM paper_highlights WHERE paper_id = :pid'), {'pid': paper_id})
@@ -293,6 +302,11 @@ def api_update_highlight(hid: str, body: HighlightUpdate):
 @router.delete('/highlights/{hid}')
 def api_delete_highlight(hid: str):
     return _invoke(delete_highlight, hid)
+
+
+@router.delete('/files/{fid}/highlights')
+def api_clear_highlights(fid: str):
+    return _invoke(clear_for_file, fid)
 
 
 @router.post('/highlights/save-to-note')

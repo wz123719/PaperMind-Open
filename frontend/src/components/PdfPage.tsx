@@ -6,7 +6,7 @@ import {regionToViewport} from '../services/coordinates';
 import {captureSelection,type PaperSelection,type SelectionIdentity} from '../services/selection';
 import 'pdfjs-dist/web/pdf_viewer.css';
 
-export const PdfPage = memo(function PdfPage({doc,page,scale,rotation,regions,highlights=[],onSelection,identity}:{doc:PDFDocumentProxy;page:number;scale:number;rotation:number;regions:Region[];highlights?:Highlight[];identity:SelectionIdentity;onSelection:(s:PaperSelection|null)=>void}){
+export const PdfPage = memo(function PdfPage({doc,page,scale,rotation,regions,highlights=[],activeHighlightId=null,onHighlightClick,onSelection,identity}:{doc:PDFDocumentProxy;page:number;scale:number;rotation:number;regions:Region[];highlights?:Highlight[];activeHighlightId?:string|null;onHighlightClick?:(id:string|null)=>void;identity:SelectionIdentity;onSelection:(s:PaperSelection|null)=>void}){
   const canvas=useRef<HTMLCanvasElement>(null),text=useRef<HTMLDivElement>(null),shell=useRef<HTMLDivElement>(null);
   const [layout,setLayout]=useState<{view:number[];viewport:PageViewport}|null>(null),[error,setError]=useState('');
   const pendingScroll=useRef(false);
@@ -45,7 +45,7 @@ export const PdfPage = memo(function PdfPage({doc,page,scale,rotation,regions,hi
       if(target){target.scrollIntoView({block:'center',inline:'center'});pendingScroll.current=false}
     }
   },[regions,layout]);
-  function selected(){
+  function selected(e?:React.MouseEvent|React.KeyboardEvent){
     if(!text.current||!layout||!shell.current){onSelection(null);return}
     const value=captureSelection(text.current,identity,page-1);
     if(value){
@@ -56,13 +56,25 @@ export const PdfPage = memo(function PdfPage({doc,page,scale,rotation,regions,hi
         const xs=corners.map(c=>(c[0]-x0)/w),ys=corners.map(c=>(y1-c[1])/h);
         return {page_index:page-1,bbox:[Math.min(...xs),Math.min(...ys),Math.max(...xs),Math.max(...ys)]};
       });
+      onHighlightClick?.(null);
+      onSelection(value);
+      return;
     }
-    onSelection(value);
+    onSelection(null);
+    if(onHighlightClick&&e&&'clientX' in e&&highlights.length){
+      const origin=shell.current.getBoundingClientRect();
+      const [px,py]=layout.viewport.convertToPdfPoint(e.clientX-origin.left,e.clientY-origin.top);
+      const [x0,y0,x1,y1]=layout.view,w=x1-x0,h=y1-y0;
+      const nx=(px-x0)/w,ny=(y1-py)/h;
+      const pad=0.008;
+      const hit=highlights.find(hl=>hl.regions.some(r=>r.page_index===page-1&&nx>=r.bbox[0]-pad&&nx<=r.bbox[2]+pad&&ny>=r.bbox[1]-pad&&ny<=r.bbox[3]+pad));
+      onHighlightClick(hit?hit.id:null);
+    }
   }
   return <>{error&&<p className="error" role="alert">{error}</p>}<div ref={shell} className="page-shell" style={layout?{width:layout.viewport.width,height:layout.viewport.height}:undefined}>
     <canvas ref={canvas} aria-label={`PDF 第 ${page} 页`}/>
     <div className="highlight-layer" aria-label="定位与持久高亮">
-      {layout&&highlights.flatMap(hl=>hl.regions.filter(r=>r.page_index===page-1).map((r,idx)=><div key={`hl-${hl.id}-${idx}`} className={`region-highlight persistent-highlight hl-${hl.color}`} data-highlight-id={hl.id} title={hl.note?`${hl.text}\n批注：${hl.note}`:hl.text} style={regionToViewport(r,layout.view,layout.viewport)}/>))}
+      {layout&&highlights.flatMap(hl=>hl.regions.filter(r=>r.page_index===page-1).map((r,idx)=><div key={`hl-${hl.id}-${idx}`} className={`region-highlight persistent-highlight hl-${hl.color}${activeHighlightId===hl.id?' active-hl':''}`} data-highlight-id={hl.id} title={hl.note?`${hl.text}\n批注：${hl.note}`:hl.text} style={regionToViewport(r,layout.view,layout.viewport)}/>))}
       {layout&&regions.filter(r=>r.page_index===page-1).map((r,n)=><div key={`loc-${n}`} className="region-highlight locate-highlight" data-testid="region-highlight" style={regionToViewport(r,layout.view,layout.viewport)}/>)}
     </div>
     <div ref={text} className="textLayer" aria-label="PDF 可选文字层" onMouseUp={selected} onKeyUp={selected}/>

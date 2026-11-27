@@ -13,9 +13,9 @@ const gaps: Record<string, string> = {
   needs_review: '待复核 · 显示原文',
 };
 
-export const TranslationDocument = memo(function TranslationDocument({blocks, results, parseId, status, bilingual=false, highlights=[], onSelectPassage, onEdit, onLocate}:{
+export const TranslationDocument = memo(function TranslationDocument({blocks, results, parseId, status, bilingual=false, highlights=[], onSelectPassage, onHighlightClick, onEdit, onLocate}:{
   blocks:Block[]; results:TranslationResult[]; parseId:string; status:string; bilingual?:boolean;
-  highlights?:Highlight[]; onSelectPassage?:(sel:PassageSelection|null)=>void;
+  highlights?:Highlight[]; onSelectPassage?:(sel:PassageSelection|null)=>void; onHighlightClick?:(id:string|null)=>void;
   onEdit:(id:string)=>void; onLocate?:(regions:Block['regions'], label:string)=>void;
 }) {
   const byBlock = useMemo(() => new Map(results.map(row => [row.block_id, row.result])), [results]);
@@ -69,7 +69,7 @@ export const TranslationDocument = memo(function TranslationDocument({blocks, re
       const eqHtml = isEquation ? renderMathHtml(text, true) : null;
       return <section className={`translation-passage${isEquation?' equation-passage':''}`} key={block.id} id={`reader-block-${block.id}`} data-block-id={block.id}>
         {bilingual && translated && !heading && !isFigure && !tableRows.size && block.text && <div className="parallel-original" lang="en">
-          <small>Original{page===undefined?'':` · Page ${page+1}`}</small><p><InlineRichText text={block.text} highlights={highlights}/></p>
+          <small>Original{page===undefined?'':` · Page ${page+1}`}</small><p><InlineRichText text={block.text} highlights={highlights} onHighlightClick={onHighlightClick}/></p>
         </div>}
         {bilingual && translated && !heading && !isFigure && <small className="parallel-label">中文译文{page===undefined?'':` · 第 ${page+1} 页`}</small>}
         {gap && !isEquation && !isFigure && !isAlgorithm && <small className="translation-gap">{gap}</small>}
@@ -91,7 +91,7 @@ export const TranslationDocument = memo(function TranslationDocument({blocks, re
             </div>
           : isAlgorithm && assets.length ? <details><summary>算法伪代码文本</summary><pre>{text}</pre></details>
           : isAlgorithm || ['code','table'].includes(block.type) ? <pre>{text}</pre>
-          : text && <p><InlineRichText text={text} highlights={highlights}/></p>}
+          : text && <p><InlineRichText text={text} highlights={highlights} onHighlightClick={onHighlightClick}/></p>}
         {gap && !isEquation && !isFigure && !isAlgorithm && <button type="button" className="translation-gap-action" onClick={() => onEdit(block.id)}>查看此处</button>}
         {bilingual && page!==undefined && onLocate && <button type="button" className="parallel-locate" onClick={()=>onLocate(block.regions,block.text || '原文位置')}>原文定位 · 第 {page+1} 页</button>}
       </section>;

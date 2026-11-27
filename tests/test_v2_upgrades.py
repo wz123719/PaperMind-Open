@@ -254,8 +254,14 @@ def test_persistent_highlights_and_save_to_note_workflow(client, tmp_path):
     assert '> [!quote] 原文高亮 · 第 1 页' in md_text
     assert 'Our model reduces latency by 3.2x.' in md_text
 
-    # 6. Delete single highlight and cascade cleanup on delete_paper
+    # 6. Delete single highlight, clear all highlights for file, and cascade cleanup on delete_paper
     assert client.delete(f"/v1/highlights/{h1['id']}").status_code == 200
     assert len(client.get(f'/v1/files/{fid}/highlights').json()) == 1
+    cleared = client.delete(f'/v1/files/{fid}/highlights')
+    assert cleared.status_code == 200 and cleared.json()['deleted_count'] == 1
+    assert client.get(f'/v1/files/{fid}/highlights').json() == []
+    assert client.post(f'/v1/files/{fid}/highlights', json={
+        'page_index': 0, 'text': 'Cascade check', 'regions': [{'page_index': 0, 'bbox': [0.1, 0.1, 0.4, 0.15]}],
+    }).status_code == 201
     assert client.delete(f'/papers/{pid}').status_code == 200
     assert client.get(f'/v1/files/{fid}/highlights').status_code == 404

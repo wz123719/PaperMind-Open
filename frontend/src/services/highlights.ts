@@ -59,6 +59,10 @@ export function deleteHighlight(hid: string): Promise<{deleted: string}> {
   return api<{deleted: string}>(`/v1/highlights/${hid}`, {method: 'DELETE'});
 }
 
+export function clearHighlights(fid: string): Promise<{deleted_count: number}> {
+  return api<{deleted_count: number}>(`/v1/files/${fid}/highlights`, {method: 'DELETE'});
+}
+
 export function saveHighlightsToNote(payload: {
   highlight_ids: string[];
   note_id?: string | null;
