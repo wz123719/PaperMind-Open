@@ -180,7 +180,7 @@ def refine_structure(pdf,blocks,rid,session=None,report=None,work=None):
     result=column_order(result)
     if work is None:return result,removed_sections
     for b in result:
-        if b['type'] not in ('formula','algorithm_step','figure_panel_title') or b['data'].get('assets'):continue
+        if b['type'] not in ('formula','algorithm','algorithm_step','figure_panel_title') or b['data'].get('assets'):continue
         for n,r in enumerate(b['regions']):
             page=pdf[r['page_index']];rotation=page.rotation;page.set_rotation(0)
             try:

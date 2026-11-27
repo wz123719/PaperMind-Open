@@ -27,7 +27,8 @@ export const TranslationDocument = memo(function TranslationDocument({blocks, re
       const gap = result?.manual ? '人工修改 · 待复核' : result ? gaps[result.status] : active ? '等待翻译 · 显示原文' : '暂无译文 · 显示原文';
       const isFigure = ['figure', 'picture', 'image'].includes(block.type);
       const isEquation = block.type === 'formula' || block.type === 'equation';
-      const assets = isFigure || isEquation ? block.data.assets || [] : [];
+      const isAlgorithm = block.type === 'algorithm' || block.type === 'algorithm_step' || block.type === 'code' || result?.reason === 'algorithm_box_kept_as_pseudocode';
+      const assets = isFigure || isEquation || isAlgorithm ? block.data.assets || [] : [];
       const table = result?.table || block.data.table_model;
       const origCellMap = new Map<string, string>();
       for (const c of block.data.table_model?.cells || []) {
@@ -48,10 +49,10 @@ export const TranslationDocument = memo(function TranslationDocument({blocks, re
           <small>Original{page===undefined?'':` · Page ${page+1}`}</small><p><InlineRichText text={block.text}/></p>
         </div>}
         {bilingual && translated && !heading && !isFigure && <small className="parallel-label">中文译文{page===undefined?'':` · 第 ${page+1} 页`}</small>}
-        {gap && !isEquation && !isFigure && <small className="translation-gap">{gap}</small>}
-        {assets.map(asset => <img key={asset} loading="lazy" alt={isEquation ? block.text : block.data.caption || '原文插图'}
+        {gap && !isEquation && !isFigure && !isAlgorithm && <small className="translation-gap">{gap}</small>}
+        {assets.map(asset => <img key={asset} loading="lazy" alt={isEquation ? block.text : isAlgorithm ? '算法伪代码原图' : block.data.caption || '原文插图'}
           src={`/api/v1/parse-runs/${encodeURIComponent(parseId)}/assets/${encodeURIComponent(asset)}`}/>)}
-        {tableRows.size > 0 ? <div className="translation-table"><table><tbody>
+        {!isAlgorithm && tableRows.size > 0 ? <div className="translation-table"><table><tbody>
           {[...tableRows].sort(([a], [b]) => a-b).map(([row, cells]) => <tr key={row}>
             {cells.sort((a,b) => a.column-b.column).map(cell => <td key={cell.column}
               rowSpan={cell.row_span || 1} colSpan={cell.column_span || 1}>
@@ -65,9 +66,10 @@ export const TranslationDocument = memo(function TranslationDocument({blocks, re
               {eqHtml ? <div className="math-block" dangerouslySetInnerHTML={{__html: eqHtml}}/> : <pre>{text}</pre>}
               <details><summary>LaTeX 公式源码</summary><pre>{text}</pre></details>
             </div>
-          : ['code','table'].includes(block.type) ? <pre>{text}</pre>
+          : isAlgorithm && assets.length ? <details><summary>算法伪代码文本</summary><pre>{text}</pre></details>
+          : isAlgorithm || ['code','table'].includes(block.type) ? <pre>{text}</pre>
           : text && <p><InlineRichText text={text}/></p>}
-        {gap && !isEquation && !isFigure && <button type="button" className="translation-gap-action" onClick={() => onEdit(block.id)}>查看此处</button>}
+        {gap && !isEquation && !isFigure && !isAlgorithm && <button type="button" className="translation-gap-action" onClick={() => onEdit(block.id)}>查看此处</button>}
         {bilingual && page!==undefined && onLocate && <button type="button" className="parallel-locate" onClick={()=>onLocate(block.regions,block.text || '原文位置')}>原文定位 · 第 {page+1} 页</button>}
       </section>;
     })}

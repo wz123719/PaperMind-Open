@@ -154,3 +154,34 @@ def test_multiline_equation_crop_retains_all_rows_and_universal_cancel(client):
     cancelled = client.post(f"/jobs/{p['job_id']}/cancel")
     assert cancelled.status_code == 202 and cancelled.json()['status'] == 'cancelled'
     assert parsing.get_run(p['id'])['status'] == 'cancelled'
+
+
+def test_three_rule_booktabs_algorithm_recognized_and_preserved_without_needs_review():
+    from backend.algorithm_layout import boxed_algorithms, step_bands
+    doc = fitz.open()
+    p = doc.new_page(width=400, height=500)
+    # 3-rule booktabs Algorithm box (no vertical lines, no colon after Algorithm 1, Procedure + Output)
+    p.draw_line((40, 60), (360, 60))
+    p.insert_text((42, 74), 'Algorithm 1 Sectioning Hierarchical Inputs under a Token Budget', fontsize=10)
+    p.draw_line((40, 80), (360, 80))
+    lines = [
+        '1: Procedure: PARTITION(v, B)',
+        '2: Output: ordered section list K',
+        '3: if tok(v) <= B then return [v]',
+        '4: if leaf(v) then return SplitText(v, B)',
+        '5: end if',
+        '6: return K',
+    ]
+    for i, text in enumerate(lines):
+        p.insert_text((45, 98 + i * 16), text, fontsize=9.5)
+    p.draw_line((40, 200), (360, 200))
+
+    found = boxed_algorithms(p)
+    assert len(found) == 1 and found[0]['evidence'] == 'three_rule_booktabs_algorithm'
+    steps = step_bands(p, found[0]['rect'])
+    assert len(steps) >= 5
+
+    # Translation preserves algorithm boxes and misclassified algorithm tables cleanly without needs_review!
+    assert translation.units({'id': 'a1', 'type': 'algorithm', 'text': '\n'.join(lines), 'data': {}})[1] == 'preserved'
+    assert translation.units({'id': 'a2', 'type': 'algorithm_step', 'text': '4: if leaf(v) then return SplitText(v, B)', 'quality_flags': ['content_unverified'], 'data': {}})[1] == 'preserved'
+    assert translation.units({'id': 't1', 'type': 'table', 'text': 'Algorithm 1 Sectioning\n1: Procedure: P\n2: Output: K\n3: if x then return [v]\n4: end if', 'data': {}})[1] == 'preserved'

@@ -10,11 +10,13 @@ def boxed_algorithms(page):
     for b in page.get_text('dict')['blocks']:
         for line in b.get('lines',[]):
             text=''.join(s['text'] for s in line['spans']).strip()
-            if re.match(r'^Algorithm\s+\d+\s*[:.]',text,re.I):captions.append((fitz.Rect(line['bbox']),text))
+            if re.match(r'^Algorithm\s+\d+(?:\s*[:.\-–]|\s+\S)',text,re.I):
+                captions.append((fitz.Rect(line['bbox']),text))
     if not captions:return []
     rules=rule_segments(page,page.rect);h=[fitz.Rect(r['bbox']) for r in rules if r['axis']=='horizontal'];v=[fitz.Rect(r['bbox']) for r in rules if r['axis']=='vertical']
     results=[]
     for cap,text in captions:
+        # Pattern 1: 4-sided closed box with caption below bottom border (classic boxed style)
         candidates=[]
         for bottom in h:
             if not -3<=cap.y0-bottom.y1<=18 or bottom.width<100 or bottom.x0>cap.x0+20:continue
@@ -26,8 +28,26 @@ def boxed_algorithms(page):
                 if not re.search(r'\bInput\s*:',raw,re.I) or not re.search(r'\bOutput\s*:',raw,re.I):continue
                 cs=characters(page,rect)
                 if sum(c['token']==r'\leftarrow' for c in cs)<2 and len(re.findall(r'(?m)^\s*\d+\s*:',raw))<3:continue
-                candidates.append(rect)
-        if len(candidates)==1:results.append({'rect':candidates[0],'caption_bbox':cap,'caption_text':text,'evidence':'caption_input_output_steps_and_closed_physical_rules'})
+                candidates.append((rect,'caption_input_output_steps_and_closed_physical_rules'))
+        # Pattern 2: Standard LaTeX 3-rule booktabs algorithm (top rule -> caption -> mid rule -> body -> bottom rule)
+        if not candidates:
+            top_rules=[r for r in h if r.width>=100 and r.x0<=cap.x0+15 and r.x1>=cap.x1-25 and -2<=cap.y0-r.y1<=16]
+            mid_rules=[r for r in h if r.width>=100 and r.x0<=cap.x0+15 and r.x1>=cap.x1-25 and -2<=r.y0-cap.y1<=14]
+            for tr in top_rules:
+                for mr in mid_rules:
+                    if abs(tr.x0-mr.x0)>5 or abs(tr.x1-mr.x1)>5:continue
+                    bot_rules=[r for r in h if 35<r.y0-mr.y1<page.rect.height*.8 and abs(r.x0-mr.x0)<=5 and abs(r.x1-mr.x1)<=5]
+                    for br in sorted(bot_rules,key=lambda r:r.y0)[:1]:
+                        rect=fitz.Rect(min(mr.x0,br.x0),mr.y1,max(mr.x1,br.x1),br.y0)
+                        raw=page.get_textbox(rect)
+                        cs=characters(page,rect)
+                        has_steps=len(re.findall(r'(?m)^\s*\d+\s*:',raw))>=3 or sum(c['token']==r'\leftarrow' for c in cs)>=2
+                        has_kw=bool(re.search(r'\b(?:Procedure|Require|Ensure|Input|Output|end\s+if|end\s+for|end\s+while|then\s+return)\b',raw,re.I))
+                        if has_steps and has_kw:
+                            candidates.append((rect,'three_rule_booktabs_algorithm'))
+        if len(candidates)==1:
+            rect,ev=candidates[0]
+            results.append({'rect':rect,'caption_bbox':cap,'caption_text':text,'evidence':ev})
     return results
 
 def primary_lines(cs):
@@ -159,12 +179,12 @@ def recover_algorithms(pdf,blocks,rid,next_id):
             for obj in boxed_algorithms(page):
                 rect=obj['rect'];steps=step_bands(page,rect)
                 if len(steps)<4:continue
-                captions=[b for b in result if b['type']=='caption' and re.match(r'^Algorithm\s+\d+[:.]',b['text'],re.I) and any(r['page_index']==page.number and abs(r['bbox'][1]*page.rect.height-obj['caption_bbox'].y0)<10 for r in b['regions'])]
+                captions=[b for b in result if b['type'] in ('caption','text','section_header','title') and re.match(r'^Algorithm\s+\d+(?:\s*[:.\-–]|\s+\S)',b['text'],re.I) and any(r['page_index']==page.number and abs(r['bbox'][1]*page.rect.height-obj['caption_bbox'].y0)<14 for r in b['regions'])]
                 if len(captions)!=1:continue
                 cap=captions[0];inside=[]
                 for b in result:
                     if b is cap or b['type']=='algorithm' or not b['regions']:continue
-                    if all(r['page_index']==page.number and rect.contains(fitz.Rect([v*(page.rect.width if i%2==0 else page.rect.height) for i,v in enumerate(r['bbox'])]).tl) for r in b['regions']):inside.append(b)
+                    if all(r['page_index']==page.number and rect.intersects(fitz.Rect([v*(page.rect.width if i%2==0 else page.rect.height) for i,v in enumerate(r['bbox'])])) and rect.contains(fitz.Rect([v*(page.rect.width if i%2==0 else page.rect.height) for i,v in enumerate(r['bbox'])]).tl + (2,2)) for r in b['regions']):inside.append(b)
                 if not inside:continue
                 parent=min(inside,key=lambda b:b['reading_order']);snapshots=[dict(b) for b in inside];children=[];group='unspecified';level=0
                 def bid():

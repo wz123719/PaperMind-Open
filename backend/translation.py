@@ -112,17 +112,33 @@ def source(parse_id):
     return doc, dict(file)
 
 
+def _looks_like_algorithm_text(text: str) -> bool:
+    if not text:
+        return False
+    if re.match(r'(?i)^\s*Algorithm\s+\d+(?:\s*[:.\-–]|\s+\S)', text):
+        return True
+    numbered = len(re.findall(r'(?m)^\s*\d+\s*:', text))
+    has_kw = bool(re.search(r'\b(?:Procedure|Require|Ensure|then\s+return|end\s+if|end\s+for|end\s+while)\b', text, re.I))
+    return numbered >= 3 and has_kw
+
+
 def units(block):
     table = block.get('data',{}).get('table_model')
     if block['type'] == 'table':
+        raw_text = block.get('text') or ''
+        if _looks_like_algorithm_text(raw_text):
+            return [], 'preserved', 'algorithm_box_kept_as_pseudocode'
         if not table or not table.get('cells'):
             return [], 'needs_review', 'table_without_structured_cells'
+        joined_cells = '\n'.join(c.get('text', '') for c in table['cells'])
+        if _looks_like_algorithm_text(joined_cells):
+            return [], 'preserved', 'algorithm_box_kept_as_pseudocode'
         return [{'id':f"{block['id']}/cell/{i}",'text':cell['text']} for i,cell in enumerate(table['cells']) if cell.get('text','').strip()], None, None
-    if block['type'] in ('formula','equation','code','reference','references','bibliography','picture','figure','image'):
-        return [], 'preserved', 'formula_code_reference_or_image_kept'
-    if block['type'] not in ('text','paragraph','title','section_header','heading','caption','list_item','list','footnote','page_header','page_footer','algorithm_step'):
+    if block['type'] in ('formula','equation','code','algorithm','algorithm_step','reference','references','bibliography','picture','figure','image'):
+        return [], 'preserved', 'formula_code_algorithm_reference_or_image_kept'
+    if block['type'] not in ('text','paragraph','title','section_header','heading','caption','list_item','list','footnote','page_header','page_footer'):
         return [], 'needs_review', 'unsupported_block_type'
-    uncertain = set(block.get('quality_flags',[])) - {'native_only','reading_order_unverified','semantic_quality_unverified'}
+    uncertain = set(block.get('quality_flags',[])) - {'native_only','reading_order_unverified','semantic_quality_unverified','content_unverified'}
     if uncertain or block['text'].count('$') % 2 or re.search(r'\\(?:frac|sum|begin)\b', block['text']) and '$' not in block['text']:
         return [], 'needs_review', 'uncertain_source_or_math_kept'
     if not block['text'].strip():
