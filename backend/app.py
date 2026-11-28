@@ -79,6 +79,8 @@ from .translation_api import router as translation_router
 app.include_router(translation_router)
 from .highlights import router as highlights_router, delete_for_paper as delete_highlights_for_paper
 app.include_router(highlights_router)
+from .preferences import router as preferences_router
+app.include_router(preferences_router)
 
 def paper_detail(pid, conn):
     row = conn.execute(select(papers).where(papers.c.id == pid)).mappings().first()

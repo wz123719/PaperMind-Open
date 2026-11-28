@@ -1,0 +1,365 @@
+.settings-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  background: rgba(18, 28, 22, 0.48);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.settings-shell {
+  width: min(920px, 96vw);
+  max-height: 88vh;
+  background: #ffffff;
+  border-radius: 16px;
+  border: 1px solid #d9e4dd;
+  box-shadow: 0 22px 60px rgba(15, 32, 22, 0.24);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  color: #1f2b24;
+}
+
+.settings-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 22px 14px;
+  border-bottom: 1px solid #e6eee9;
+  background: #f8fbf9;
+}
+
+.settings-header h2 {
+  margin: 0 0 4px;
+  font-size: 18px;
+  font-weight: 650;
+}
+
+.settings-header p {
+  margin: 0;
+  font-size: 12.5px;
+  color: #5b6d62;
+}
+
+.settings-body {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  min-height: 0;
+  flex: 1;
+}
+
+.settings-nav {
+  background: #f4f8f5;
+  border-right: 1px solid #e4ece7;
+  padding: 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+}
+
+.settings-nav button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: #34473c;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.settings-nav button:hover {
+  background: #e8f1eb;
+}
+
+.settings-nav button[aria-current="page"] {
+  background: #ffffff;
+  border-color: #cde0d4;
+  color: #154d32;
+  font-weight: 600;
+  box-shadow: 0 1px 4px rgba(20, 50, 34, 0.06);
+}
+
+.settings-nav button small {
+  font-size: 11px;
+  font-weight: 500;
+  color: #6b7d72;
+}
+
+.settings-nav button small.ok {
+  color: #1f7a4c;
+}
+
+.settings-nav button small.warn {
+  color: #a66a12;
+}
+
+.settings-content {
+  padding: 20px 24px;
+  overflow-y: auto;
+  min-height: 360px;
+}
+
+.settings-loading {
+  color: #617368;
+  font-size: 13px;
+}
+
+.settings-section h3 {
+  margin: 0 0 12px;
+  font-size: 15px;
+  font-weight: 650;
+  color: #1b2c22;
+}
+
+.settings-desc {
+  margin: -4px 0 14px;
+  font-size: 12.5px;
+  color: #5b6d62;
+  line-height: 1.55;
+}
+
+.settings-field {
+  margin-bottom: 14px;
+}
+
+.settings-field label {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #2f4036;
+  margin-bottom: 5px;
+}
+
+.settings-field input,
+.settings-field select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  font-size: 13px;
+  border: 1px solid #cbd9d0;
+  border-radius: 8px;
+  background: #fff;
+  color: #1f2b24;
+}
+
+.settings-field small {
+  display: block;
+  margin-top: 5px;
+  font-size: 11.5px;
+  color: #64776b;
+}
+
+.hint-ok {
+  color: #1f7549 !important;
+}
+
+.hint-warn {
+  color: #a3640f !important;
+}
+
+.settings-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 9px 11px;
+  margin-bottom: 10px;
+  border: 1px solid #e5ede8;
+  border-radius: 10px;
+  background: #fbfdfb;
+  cursor: pointer;
+}
+
+.settings-check input[type="checkbox"] {
+  margin-top: 3px;
+  width: auto;
+}
+
+.settings-check strong {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: #213228;
+}
+
+.settings-check small {
+  display: block;
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: #617469;
+  line-height: 1.45;
+}
+
+.settings-divider {
+  border: 0;
+  border-top: 1px solid #e6eee9;
+  margin: 18px 0;
+}
+
+.settings-two-col {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.settings-color-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.settings-color-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid #d2dfd7;
+  background: #fff;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.settings-color-pill.active {
+  border-color: #1f6f4a;
+  background: #eef8f2;
+  color: #144d32;
+  font-weight: 600;
+}
+
+.swatch-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.settings-presets {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 14px;
+  font-size: 12px;
+  color: #5b6d62;
+}
+
+.settings-presets button {
+  padding: 5px 10px;
+  font-size: 12px;
+  border-radius: 999px;
+  border: 1px solid #cfe0d6;
+  background: #f4f9f6;
+  color: #1f5439;
+  cursor: pointer;
+}
+
+.settings-presets button:hover {
+  background: #e4f2ea;
+}
+
+.settings-inline-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.settings-inline-row input {
+  flex: 1;
+}
+
+.settings-inline-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.settings-action-row {
+  margin-top: 12px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.settings-card {
+  border: 1px solid #dde8e1;
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  background: #fcfefd;
+}
+
+.settings-card > .settings-check {
+  margin-bottom: 0;
+  border: 0;
+  padding: 2px 0;
+  background: transparent;
+}
+
+.settings-subform {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed #d6e3db;
+}
+
+.settings-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 22px;
+  border-top: 1px solid #e6eee9;
+  background: #f8fbf9;
+}
+
+.settings-status-area {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+}
+
+.settings-hint {
+  color: #63756a;
+}
+
+.settings-notice {
+  color: #17693f;
+  font-weight: 600;
+}
+
+.settings-error {
+  color: #b42323;
+  font-weight: 600;
+}
+
+.settings-footer-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+@media (max-width: 720px) {
+  .settings-body {
+    grid-template-columns: 1fr;
+  }
+  .settings-nav {
+    flex-direction: row;
+    border-right: 0;
+    border-bottom: 1px solid #e4ece7;
+  }
+  .settings-two-col {
+    grid-template-columns: 1fr;
+  }
+}

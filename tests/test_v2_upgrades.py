@@ -265,3 +265,52 @@ def test_persistent_highlights_and_save_to_note_workflow(client, tmp_path):
     }).status_code == 201
     assert client.delete(f'/papers/{pid}').status_code == 200
     assert client.get(f'/v1/files/{fid}/highlights').status_code == 404
+
+
+def test_unified_workspace_preferences_and_task_model_reset(client):
+    # 1. Default workspace preferences & capabilities
+    res = client.get('/v1/workspace-preferences')
+    assert res.status_code == 200
+    data = res.json()
+    assert data['parse_mode'] == 'docling'
+    assert data['default_reader_mode'] == 'bilingual'
+    assert data['default_highlight_color'] == 'yellow'
+    assert 'capabilities' in data and 'docling_available' in data['capabilities']
+
+    # 2. Save custom preferences & verify persistence
+    saved = client.post('/v1/workspace-preferences', json={
+        'parse_mode': 'native',
+        'parse_formulas': False,
+        'default_reader_mode': 'original',
+        'default_highlight_color': 'blue',
+        'default_bundle_pdf': True,
+        'show_outline_by_default': False,
+    })
+    assert saved.status_code == 200
+    body = saved.json()
+    assert body['parse_mode'] == 'native'
+    assert body['parse_formulas'] is False
+    assert body['default_reader_mode'] == 'original'
+    assert body['default_highlight_color'] == 'blue'
+    assert body['default_bundle_pdf'] is True
+    assert body['show_outline_by_default'] is False
+
+    # 3. Aggregated settings overview returns all 4 domains in one call
+    ov = client.get('/v1/settings-overview')
+    assert ov.status_code == 200
+    ov_data = ov.json()
+    assert ov_data['preferences']['parse_mode'] == 'native'
+    assert set(ov_data.keys()) >= {'preferences', 'llm', 'translation_model', 'glossary_model', 'vault', 'capabilities'}
+
+    # 4. Override translation task model and then reset back to global default
+    over = client.post('/v1/task-model-settings/translation', json={
+        'endpoint': 'https://api.deepseek.com/chat/completions',
+        'model': 'deepseek-chat',
+        'key_env': '',
+        'expected_revision': None,
+        'use_system_proxy': False,
+    })
+    assert over.status_code == 200 and over.json()['source'] == 'task'
+
+    reset = client.delete('/v1/task-model-settings/translation')
+    assert reset.status_code == 200 and reset.json()['source'] == 'workspace'

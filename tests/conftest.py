@@ -36,9 +36,15 @@ def pdf_bytes(title='Research fixture', doi=None, arxiv=None):
 @pytest.fixture(autouse=True)
 def clean():
     init_db()
+    (STORAGE / 'credentials.dpapi.json').unlink(missing_ok=True)
     with engine.begin() as conn:
         for table in reversed(meta.sorted_tables):
             conn.execute(table.delete())
+        for extra in ('paper_highlights', 'workspace_preferences'):
+            if conn.exec_driver_sql(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (extra,)
+            ).scalar():
+                conn.exec_driver_sql(f'DELETE FROM {extra}')
     yield
 
 @pytest.fixture

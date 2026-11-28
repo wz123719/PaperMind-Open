@@ -14,7 +14,7 @@ function isFullTranslation(run:Run, blockCount:number) {
     (!run.snapshot.scope && run.snapshot.blocks.length === blockCount));
 }
 
-export function TranslationPanel({structure,paperId,onLocate,onDirty,bilingual=false,highlights=[],onSelectPassage,onHighlightClick}:{structure:Structure;paperId:string;onLocate:(r:Region[],label:string)=>void;onDirty:(value:boolean)=>void;bilingual?:boolean;highlights?:Highlight[];onSelectPassage?:(sel:PassageSelection|null)=>void;onHighlightClick?:(id:string|null)=>void}){
+export function TranslationPanel({structure,paperId,settingsVersion=0,onLocate,onDirty,bilingual=false,highlights=[],onSelectPassage,onHighlightClick}:{structure:Structure;paperId:string;settingsVersion?:number;onLocate:(r:Region[],label:string)=>void;onDirty:(value:boolean)=>void;bilingual?:boolean;highlights?:Highlight[];onSelectPassage?:(sel:PassageSelection|null)=>void;onHighlightClick?:(id:string|null)=>void}){
   const [runs,setRuns]=useState<RunItem[]>([]),[run,setRun]=useState<Run|null>(null),[selected,setSelected]=useState('');
   const [gloss,setGloss]=useState<Glossary>({id:null,entries:[]}),[terms,setTerms]=useState<Term[]>([]);
   const [newEn,setNewEn]=useState(''),[newZh,setNewZh]=useState(''),[newLock,setNewLock]=useState(true);
@@ -66,7 +66,7 @@ export function TranslationPanel({structure,paperId,onLocate,onDirty,bilingual=f
     return()=>{live=false};
   },[parseId,paperId,blockCount]);
 
-  useEffect(()=>{let live=true;void api<Model>('/v1/task-model-settings/'+task).then(v=>{if(live)setModel(v)}).catch(e=>{if(live)setError(e.message)});return()=>{live=false}},[task]);
+  useEffect(()=>{let live=true;void api<Model>('/v1/task-model-settings/'+task).then(v=>{if(live)setModel(v)}).catch(e=>{if(live)setError(e.message)});return()=>{live=false}},[task,settingsVersion]);
   useEffect(()=>{if(!run||!['queued','running'].includes(run.status))return;let live=true;const timer=setInterval(()=>{void api<Run>('/v1/translation-runs/'+run.id).then(v=>{if(live)setRun(v)}).catch(e=>{if(live)setError(e.message)})},1500);return()=>{live=false;clearInterval(timer)}},[run?.id,run?.status]);
 
   function accept(r:Run,id=selected){setRun(r);setSelected(id);const b=r.blocks.find(x=>x.block_id===id);setText(b?.result.text||'');setBase(b?.id||'');setDirty(false)}

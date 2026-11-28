@@ -5,10 +5,15 @@ import {api,type Paper,type Job} from './services/api';
 import {Reader} from './components/Reader';
 import './style.css';
 import {NotesPanel} from './components/NotesPanel';
+import {SettingsModal} from './components/SettingsModal';
+import {fetchSettingsOverview,type SettingsOverview} from './services/preferences';
 import './notes.css';
 
 function App(){
   const [notesOpen,setNotesOpen]=useState(false);
+  const [settingsOpen,setSettingsOpen]=useState(false);
+  const [settingsTab,setSettingsTab]=useState<'parsing'|'llm'|'tasks'|'obsidian'>('parsing');
+  const [overview,setOverview]=useState<SettingsOverview|null>(null);
   const [papers,setPapers]=useState<Paper[]>([]), [jobs,setJobs]=useState<Job[]>([]), [selected,setSelected]=useState<Paper|null>(null);
   const [search,setSearch]=useState(''), [dragging,setDragging]=useState(false);
   const [input,setInput]=useState(''),[message,setMessage]=useState(''),[error,setError]=useState(''),[uploading,setUploading]=useState(false),[importing,setImporting]=useState(false);
@@ -29,6 +34,7 @@ function App(){
   useEffect(()=>{
     if(notesOpen||selected)return;
     void refresh().catch(e=>setError(e.message));
+    void fetchSettingsOverview().then(setOverview).catch(()=>{});
     const timer=setInterval(()=>void refresh().catch(()=>{}),8000);
     return()=>{clearInterval(timer);streams.current.forEach(s=>s.close());streams.current.clear()};
   },[notesOpen,selected]);
@@ -91,10 +97,16 @@ function App(){
       <span className="workspace-label">RESEARCH DESKTOP</span>
       <button type="button" className="nav-item" style={{width:'100%',textAlign:'left',border:'none',cursor:'pointer'}}>▤　论文库 <span>{papers.length}</span></button>
       <button type="button" className="nav-item" style={{width:'100%',textAlign:'left',border:'none',cursor:'pointer',marginTop:6,background:'transparent'}} onClick={()=>setNotesOpen(true)}>✎　知识笔记库</button>
+      <button type="button" className="nav-item" style={{width:'100%',textAlign:'left',border:'none',cursor:'pointer',marginTop:6,background:'transparent'}} onClick={()=>{setSettingsTab('parsing');setSettingsOpen(true)}}>⚙　全局偏好设置</button>
       <div className="aside-bottom"><i/> 本地存储 · 隐私安全<small>独立科研桌面工作台</small></div>
     </aside>
     <main>
       <div className="topline"><span>工作空间 / 论文库</span><span className="badge">本地优先 · Obsidian 联动</span></div>
+      {overview&&!overview.llm.has_saved_key&&!overview.llm.key_env&&<div className="notice" style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,flexWrap:'wrap'}}>
+        <span>首次使用建议先完成一次全局偏好设置（解析引擎、大模型 API 密钥、Obsidian 路径）。</span>
+        <button type="button" className="primary" onClick={()=>{setSettingsTab('llm');setSettingsOpen(true)}}>⚙ 立即配置</button>
+      </div>}
+      {settingsOpen&&<SettingsModal initialTab={settingsTab} onClose={()=>setSettingsOpen(false)} onSaved={ov=>setOverview(ov)}/>}
       <section className="heading">
         <div><span className="eyebrow">YOUR RESEARCH, IN ONE PLACE</span><h1>论文库</h1><p>导入论文、深度精读、公式还原、一键沉淀同名 Obsidian 笔记。</p></div>
         <div className="counts"><strong>{papers.length}</strong><span>篇论文</span><b>{active}</b><span>项导入中</span></div>

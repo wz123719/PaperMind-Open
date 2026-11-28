@@ -9,6 +9,8 @@ import {ChatPanel} from './ChatPanel';
 import {NotesPanel} from './NotesPanel';
 import {TranslationPanel} from './TranslationPanel';
 import {HighlightsPanel} from './HighlightsPanel';
+import {SettingsModal} from './SettingsModal';
+import {fetchPreferences,type SettingsOverview} from '../services/preferences';
 import type {PassageSelection} from './TranslationDocument';
 import type {PaperSelection} from '../services/selection';
 import type {Identity} from '../services/chat';
@@ -35,6 +37,7 @@ export function Reader({paper,onBack}:{paper:Paper;onBack:()=>void}){
   const [translationDirty,setTranslationDirty]=useState(false);
   function leaveTranslation(){return !translationDirty||window.confirm('译文有未保存修改，确定放弃这些修改？')}
   const [notesOpen,setNotesOpen]=useState(false),[savedMessage,setSavedMessage]=useState<string|null>(null);
+  const [settingsOpen,setSettingsOpen]=useState(false),[settingsVersion,setSettingsVersion]=useState(0);
   const chatVisible=import.meta.env.VITE_PAPERMIND_INTERACTIVE_READING!=='0';
   const [showOutline,setShowOutline]=useState(true),[showReading,setShowReading]=useState(true);
   const [sideMode,setSideMode]=useState<'reading'|'chat'|'highlights'>(()=>{
@@ -63,6 +66,28 @@ export function Reader({paper,onBack}:{paper:Paper;onBack:()=>void}){
   const [query,setQuery]=useState(''),[hits,setHits]=useState<SearchHit[]>([]),[searching,setSearching]=useState(false),[submitting,setSubmitting]=useState(false);
 
   useEffect(()=>{window.scrollTo(0,0)},[]);
+  useEffect(()=>{
+    let live=true;
+    void fetchPreferences().then(p=>{
+      if(!live)return;
+      setMode(p.parse_mode);
+      setFormulas(p.parse_formulas);
+      setSourcePreferred(p.parse_source_preferred);
+      setReaderMode(p.default_reader_mode);
+      setHlColor(p.default_highlight_color);
+      setShowOutline(p.show_outline_by_default);
+      setShowReading(p.show_ai_panel_by_default);
+    }).catch(()=>{});
+    return()=>{live=false};
+  },[]);
+  function applySavedSettings(ov:SettingsOverview){
+    const p=ov.preferences;
+    setMode(p.parse_mode);
+    setFormulas(p.parse_formulas);
+    setSourcePreferred(p.parse_source_preferred);
+    setHlColor(p.default_highlight_color);
+    setSettingsVersion(v=>v+1);
+  }
   useEffect(()=>{if(showReading)sessionStorage.setItem('reader-side-'+paper.id,sideMode);else sessionStorage.removeItem('reader-side-'+paper.id)},[showReading,sideMode,paper.id]);
   useEffect(()=>{if(fid)sessionStorage.setItem('reader-file-'+paper.id,fid)},[fid,paper.id]);
   useEffect(()=>{if(structure?.run.paper_file_id===fid&&structure.run.id===(viewRun||current))sessionStorage.setItem('reader-run-'+fid,structure.run.id)},[structure,fid,viewRun,current]);
@@ -295,6 +320,7 @@ export function Reader({paper,onBack}:{paper:Paper;onBack:()=>void}){
         <div className="paper-reader-actions">
           <button type="button" onClick={()=>setShowOutline(v=>!v)}>{showOutline?'隐藏目录':'显示目录'}</button>
           <button type="button" onClick={()=>setShowReading(v=>!v)}>{showReading?'专注阅读':'打开AI栏'}</button>
+          <button type="button" onClick={()=>setSettingsOpen(true)}>⚙ 偏好设置</button>
           <button type="button" className="primary" onClick={()=>{setSavedMessage(null);setNotesOpen(true)}}>✎ 知识笔记 / Obsidian</button>
         </div>
       </header>
@@ -316,6 +342,7 @@ export function Reader({paper,onBack}:{paper:Paper;onBack:()=>void}){
         </div>}
       </div>
     </div>
+    {settingsOpen&&<SettingsModal onClose={()=>setSettingsOpen(false)} onSaved={applySavedSettings}/>}
     {notesOpen&&<NotesPanel paperId={paper.id} fileId={fid} parseId={target} messageId={savedMessage} onClose={()=>setNotesOpen(false)} onLocate={(id,r,label)=>locateChat({...id,paper_id:paper.id,file_sha256:paper.files.find(f=>f.id===id.paper_file_id)?.sha256||''},r,label)}/>}
     {error&&<p role="alert" className="error">{error}</p>}
     <div className="paper-reader-grid" style={{gridTemplateColumns:gridCols}}>
@@ -410,7 +437,7 @@ export function Reader({paper,onBack}:{paper:Paper;onBack:()=>void}){
             <button type="button" onClick={()=>setActiveHighlightId(null)}>关闭</button>
           </div>
         </div>}
-        {displayMode!=='original'&&activeStructure&&<TranslationPanel key={activeStructure.run.id} structure={activeStructure} paperId={paper.id}
+        {displayMode!=='original'&&activeStructure&&<TranslationPanel key={activeStructure.run.id} structure={activeStructure} paperId={paper.id} settingsVersion={settingsVersion}
           bilingual={displayMode==='bilingual'} highlights={highlights} onSelectPassage={sel=>{setPassageSelection(sel);if(sel)setActiveHighlightId(null)}} onHighlightClick={id=>setActiveHighlightId(id)} onLocate={showOriginal} onDirty={setTranslationDirty}/>}
         {displayMode==='original'&&<div className="reading-area">
           {located&&<div className="located" role="status"><span>定位：{located.slice(0,90)}</span>{regions.map((r,n)=><button key={n} onClick={()=>setPage(r.page_index+1)}>区域 {n+1} · 第 {r.page_index+1} 页</button>)}<button onClick={()=>{setRegions([]);setLocated('')}}>清除定位</button></div>}
@@ -425,7 +452,7 @@ export function Reader({paper,onBack}:{paper:Paper;onBack:()=>void}){
           <button type="button" aria-pressed={sideMode==='highlights'} onClick={()=>setSideMode('highlights')}>高亮摘录 ({highlights.length})</button>
         </nav>
         {sideMode==='reading'
-          ?<ReadingPanel key={fid+':'+target} parseId={target} fileId={fid} onLocate={showOriginal} onNote={id=>{sessionStorage.setItem('note-selected-'+paper.id,id);setSavedMessage(null);setNotesOpen(true)}} compact/>
+          ?<ReadingPanel key={fid+':'+target} parseId={target} fileId={fid} settingsVersion={settingsVersion} onLocate={showOriginal} onNote={id=>{sessionStorage.setItem('note-selected-'+paper.id,id);setSavedMessage(null);setNotesOpen(true)}} compact/>
           :sideMode==='highlights'
           ?<HighlightsPanel paperId={paper.id} fileId={fid} parseId={target} highlights={highlights} onChange={setHighlights} onLocate={showOriginal} onOpenNote={id=>{sessionStorage.setItem('note-selected-'+paper.id,id);setSavedMessage(null);setNotesOpen(true)}}/>
           :<ChatPanel onSaveAnswer={id=>{setSavedMessage(id);setNotesOpen(true)}} paperId={paper.id} fileId={fid} parseId={target} pageIndex={page-1} selection={selection} onClear={()=>setSelection(null)} onLocate={locateChat}/>}

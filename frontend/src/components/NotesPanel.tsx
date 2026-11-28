@@ -3,6 +3,7 @@ import {noteApi,NoteError,operationKey,type NoteRow,type NoteRevision,type Asset
 import {MarkdownPreview} from './MarkdownPreview';
 import type {Region} from '../services/api';
 import {isKnowledgeReading,readingDate} from '../services/reading';
+import {fetchPreferences} from '../services/preferences';
 
 type Reading={id:string;status:string;pipeline_version?:string;created_at?:number};
 type Suggestion={changes:{section_id:string;current:string;proposed:string;diff:string}[];warning:string};
@@ -62,6 +63,7 @@ export function NotesPanel({paperId,fileId,parseId,messageId,onClose,onLocate}:{
     return()=>{live=false;++acceptedEpoch.current;if(operationEpoch.current===token){++operationEpoch.current;busyRef.current=false}};
   },[paperId]);
 
+  useEffect(()=>{let live=true;void fetchPreferences().then(p=>{if(live)setBundlePdf(p.default_bundle_pdf)}).catch(()=>{});return()=>{live=false}},[]);
   useEffect(()=>{let live=true;setRuns([]);if(parseId)void noteApi<Reading[]>(`/parse-runs/${parseId}/reading-runs`).then(r=>{if(live)setRuns(r.filter(x=>x.status==='succeeded'&&isKnowledgeReading(x)))}).catch(()=>{});return()=>{live=false}},[parseId]);
   useEffect(()=>{function protect(e:BeforeUnloadEvent){if(dirty){e.preventDefault();e.returnValue=''}}window.addEventListener('beforeunload',protect);return()=>window.removeEventListener('beforeunload',protect)},[dirty]);
   useEffect(()=>{function onKey(e:KeyboardEvent){if(e.key==='Escape'&&!dirty)onClose()}window.addEventListener('keydown',onKey);return()=>window.removeEventListener('keydown',onKey)},[dirty,onClose]);

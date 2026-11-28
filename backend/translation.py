@@ -58,6 +58,15 @@ def configure(task, value):
     return settings(task)
 
 
+def reset_settings(task):
+    from . import dpapi
+    settings(task)  # Validate task name
+    dpapi.delete_secret(task)
+    with write_tx() as c:
+        c.execute(task_model_settings.delete().where(task_model_settings.c.id == task))
+    return settings(task)
+
+
 def glossary(paper_id):
     with engine.connect() as c:
         row = c.execute(select(glossary_versions).where(glossary_versions.c.paper_id == paper_id)

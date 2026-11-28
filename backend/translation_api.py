@@ -58,6 +58,11 @@ def configure(task: str, body: ModelInput):
     return invoke(t.configure, task, body.model_dump(exclude_none=True))
 
 
+@router.delete('/task-model-settings/{task}')
+def reset_task_settings(task: str):
+    return invoke(t.reset_settings, task)
+
+
 @router.post('/task-model-settings/{task}/test')
 def test_task_settings(task: str, body: ModelInput):
     def _probe():

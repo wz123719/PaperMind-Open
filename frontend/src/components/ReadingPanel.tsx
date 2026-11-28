@@ -32,7 +32,7 @@ const presets = [
 ];
 const post = (data:unknown):RequestInit => ({method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)});
 
-export function ReadingPanel({parseId,fileId,onLocate,onNote,compact=false}:{parseId:string|null; fileId:string;
+export function ReadingPanel({parseId,fileId,settingsVersion=0,onLocate,onNote,compact=false}:{parseId:string|null; fileId:string; settingsVersion?:number;
   onLocate:(r:Region[],label:string)=>void; onNote:(id:string)=>void; compact?:boolean}) {
   const [config,setConfig] = useState<Config>({endpoint:'',model:'',key_env:'',use_system_proxy:false});
   const [draft,setDraft] = useState<Config>({endpoint:'',model:'',key_env:'',use_system_proxy:false});
@@ -42,7 +42,7 @@ export function ReadingPanel({parseId,fileId,onLocate,onNote,compact=false}:{par
   const [notice,setNotice] = useState(''), [savedNotes,setSavedNotes] = useState<Record<string,string>>({});
 
   useEffect(()=>{let live=true; void api<Config>('/v1/reading-settings').then(c=>{if(live){setConfig(c);setDraft(c)}})
-    .catch(e=>{if(live)setError(e.message)}); return()=>{live=false}},[]);
+    .catch(e=>{if(live)setError(e.message)}); return()=>{live=false}},[settingsVersion]);
   const enabled=config.knowledge_reading_enabled===true;
   const settingsLoaded=config.configured!==undefined;
   const active=runs.find(r=>r.status==='running'||r.status==='queued');
