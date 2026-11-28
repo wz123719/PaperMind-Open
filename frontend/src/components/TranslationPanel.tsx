@@ -19,7 +19,6 @@ export function TranslationPanel({structure,paperId,settingsVersion=0,onLocate,o
   const [gloss,setGloss]=useState<Glossary>({id:null,entries:[]}),[terms,setTerms]=useState<Term[]>([]);
   const [newEn,setNewEn]=useState(''),[newZh,setNewZh]=useState(''),[newLock,setNewLock]=useState(true);
   const [task,setTask]=useState('translation'),[model,setModel]=useState<Model>({endpoint:'',model:'',key_env:'',revision:null});
-  const [apiKey,setApiKey]=useState('');
   const [scope,setScope]=useState('full'),[scopeId,setScopeId]=useState(''),[force,setForce]=useState(false);
   const [busy,setBusy]=useState(false),[error,setError]=useState(''),[detail,setDetail]=useState(''),[text,setText]=useState(''),[base,setBase]=useState('');
   const working=useRef(false),[dirty,setDirty]=useState(false);
@@ -87,21 +86,14 @@ export function TranslationPanel({structure,paperId,settingsVersion=0,onLocate,o
     <fieldset disabled={busy}>
       {!run&&<div className="translation-start">
         <p>{bilingual?'翻译整篇论文后，可在原文下方逐段对照阅读中文译文（已启用同章节批量加速翻译）。':'翻译完成后，中文译文与渲染后的数学公式将按论文顺序连续显示。'}</p>
-        {!model.has_saved_key&&model.uses_default_model&&<p className="reading-caution">请先在右侧「AI 精读 → 模型配置」中填写并保存 API 密钥。</p>}
+        {!model.has_saved_key&&model.uses_default_model&&<p className="reading-caution">请先点击右上角「⚙ 偏好设置」填写并保存大模型 API 密钥。</p>}
         <button type="button" className="primary" onClick={()=>void work(()=>submit([],'full',false,'translation'))}>翻译整篇论文</button>
       </div>}
-      <details className="translation-controls"><summary>翻译设置、专业术语表与历史</summary>
+      <details className="translation-controls"><summary>专业术语表、翻译范围与历史</summary>
         <div className="notes-toolbar">
           <label>任务类型<select aria-label="翻译任务类型" value={task} onChange={e=>setTask(e.target.value)}><option value="translation">学术翻译</option><option value="glossary">提取论文术语建议</option></select></label>
-          <span>当前模型：{model.model||'未配置'} ({model.source==='task'?'翻译专用':'沿用精读默认'})</span>
+          <span>当前模型：{model.model||'未配置'}（{model.source==='task'?'翻译专用':'沿用全局默认'} · 可在右上角「⚙ 偏好设置」修改）</span>
         </div>
-        <details><summary>单独为翻译指定模型（可选）</summary>
-          <label>模型端点<input aria-label="翻译模型端点" value={model.endpoint} onChange={e=>setModel({...model,endpoint:e.target.value})}/></label>
-          <label>模型名<input aria-label="翻译模型名" value={model.model} onChange={e=>setModel({...model,model:e.target.value})}/></label>
-          <label>专用 API 密钥（可选，DPAPI 加密保存）<input type="password" placeholder={model.has_saved_key?`已保存 (${model.masked_key})`:'留空则沿用精读密钥'} value={apiKey} onChange={e=>setApiKey(e.target.value)}/></label>
-          <label className="checkbox-inline"><input type="checkbox" checked={!!model.use_system_proxy} onChange={e=>setModel({...model,use_system_proxy:e.target.checked})}/> 跟随系统代理</label>
-          <button type="button" onClick={()=>void work(async()=>{const m=await request<Model>('/task-model-settings/'+task,{endpoint:model.endpoint,model:model.model,key_env:model.key_env,expected_revision:model.revision,api_key:apiKey.trim()||undefined,use_system_proxy:!!model.use_system_proxy});setModel(m);setApiKey('')})}>保存专用模型</button>
-        </details>
 
         <details><summary>论文术语锁定表 ({terms.length} 项)</summary>
           <p>锁定的英文术语在翻译中会被严格保护替换，确保全篇译法统一。</p>

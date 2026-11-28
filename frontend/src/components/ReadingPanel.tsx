@@ -23,25 +23,16 @@ const statuses:Record<string,string> = {queued:'等待执行', running:'精读�
   completed:'已完成', completed_with_warnings:'已完成 · 有提示', partially_completed:'部分完成'};
 const stages:Record<string,string> = {pending:'等待', running:'进行中', completed:'已完成', failed:'失败'};
 const checks:Record<string,string> = {inferred:'推断', unsupported:'证据不足', conflicted:'存在冲突'};
-const presets = [
-  {label:'DeepSeek 官方', endpoint:'https://api.deepseek.com/chat/completions', model:'deepseek-chat'},
-  {label:'DeepSeek Flash', endpoint:'https://api.deepseek.com/chat/completions', model:'deepseek-flash'},
-  {label:'硅基流动 Qwen', endpoint:'https://api.siliconflow.cn/v1/chat/completions', model:'Qwen/Qwen2.5-72B-Instruct'},
-  {label:'OpenAI 兼容', endpoint:'https://api.openai.com/v1/chat/completions', model:'gpt-4o-mini'},
-  {label:'本地 Ollama', endpoint:'http://127.0.0.1:11434/v1/chat/completions', model:'qwen2.5:14b'},
-];
 const post = (data:unknown):RequestInit => ({method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)});
 
 export function ReadingPanel({parseId,fileId,settingsVersion=0,onLocate,onNote,compact=false}:{parseId:string|null; fileId:string; settingsVersion?:number;
   onLocate:(r:Region[],label:string)=>void; onNote:(id:string)=>void; compact?:boolean}) {
   const [config,setConfig] = useState<Config>({endpoint:'',model:'',key_env:'',use_system_proxy:false});
-  const [draft,setDraft] = useState<Config>({endpoint:'',model:'',key_env:'',use_system_proxy:false});
-  const [apiKey,setApiKey] = useState(''), [testing,setTesting] = useState(false);
-  const [edit,setEdit] = useState(false), [runs,setRuns] = useState<Run[]>([]), [selected,setSelected] = useState('');
+  const [runs,setRuns] = useState<Run[]>([]), [selected,setSelected] = useState('');
   const [report,setReport] = useState<Report|null>(null), [error,setError] = useState(''), [busy,setBusy] = useState(false);
   const [notice,setNotice] = useState(''), [savedNotes,setSavedNotes] = useState<Record<string,string>>({});
 
-  useEffect(()=>{let live=true; void api<Config>('/v1/reading-settings').then(c=>{if(live){setConfig(c);setDraft(c)}})
+  useEffect(()=>{let live=true; void api<Config>('/v1/reading-settings').then(c=>{if(live)setConfig(c)})
     .catch(e=>{if(live)setError(e.message)}); return()=>{live=false}},[settingsVersion]);
   const enabled=config.knowledge_reading_enabled===true;
   const settingsLoaded=config.configured!==undefined;
@@ -88,34 +79,6 @@ export function ReadingPanel({parseId,fileId,settingsVersion=0,onLocate,onNote,c
     if(!isKnowledgeReading(run))throw new Error('当前服务没有返回综合精读任务。');
     setRuns(p=>[run,...p.filter(x=>x.id!==run.id)]);setSelected(run.id);
   }
-  async function saveSettings(e:React.FormEvent){
-    e.preventDefault();
-    await action(async()=>{
-      const payload:Record<string,unknown>={endpoint:draft.endpoint,model:draft.model,key_env:draft.key_env,use_system_proxy:!!draft.use_system_proxy};
-      if(apiKey.trim())payload.api_key=apiKey.trim();
-      const c=await api<Config>('/v1/reading-settings',post(payload));
-      const next={...c,knowledge_reading_enabled:config.knowledge_reading_enabled,configured:true};
-      setConfig(next);setDraft(next);setApiKey('');setEdit(false);
-      setNotice(apiKey.trim()?'模型配置与 API 密钥已通过 Windows DPAPI 加密保存（立即生效，无需重启）':'模型配置已保存');
-    });
-  }
-  async function clearSavedKey(){
-    await action(async()=>{
-      const c=await api<Config>('/v1/reading-settings',post({endpoint:draft.endpoint,model:draft.model,key_env:draft.key_env,use_system_proxy:!!draft.use_system_proxy,clear_api_key:true}));
-      const next={...c,knowledge_reading_enabled:config.knowledge_reading_enabled,configured:true};
-      setConfig(next);setDraft(next);setNotice('已清除本地加密保存的 API 密钥');
-    });
-  }
-  async function testConnection(){
-    setTesting(true);setError('');setNotice('');
-    try{
-      const res=await api<{ok:boolean;latency_ms:number;model:string}>('/v1/reading-settings/test',post({
-        endpoint:draft.endpoint,model:draft.model,key_env:draft.key_env,
-        api_key:apiKey.trim()||undefined,use_system_proxy:!!draft.use_system_proxy,
-      }));
-      setNotice(`连接成功 · 模型 ${res.model} · 响应耗时 ${res.latency_ms} ms`);
-    }catch(e){setError((e as Error).message)}finally{setTesting(false)}
-  }
   async function start(){await action(async()=>{selectRun(await api<Run>(`/v1/parse-runs/${parseId}/reading-runs`,
     post({force:row?.status==='succeeded',pipeline_version:knowledgeReadingVersion})))})}
   async function retry(run:Run){await action(async()=>{selectRun(await api<Run>(`/v1/reading-runs/${run.id}/retry-specialties`,post({})))})}
@@ -136,37 +99,14 @@ export function ReadingPanel({parseId,fileId,settingsVersion=0,onLocate,onNote,c
 
   return <aside className="ai-reading-panel" aria-label="AI 深度精读">
     {!compact&&<h2>AI 深度精读</h2>}
-    <p className="reading-disclosure">综合论文所需的前置知识、方法与公式、实验和局限。精读与问答共用此模型配置。</p>
+    <p className="reading-disclosure">综合论文所需的前置知识、方法与公式、实验和局限。模型与密钥请在右上角「⚙ 偏好设置」统一配置。</p>
     <div className="reading-actions">
       <button className="primary" disabled={!enabled||!parseId||!config.configured||busy||!!active} onClick={()=>void start()}>
         {currentReport?'重新生成综合精读':'开始综合精读'}</button>
-      <button onClick={()=>{setDraft(config);setEdit(v=>!v)}} aria-expanded={edit}>{edit?'收起配置':'模型配置'}</button>
     </div>
     {settingsLoaded&&!enabled&&<p className="reading-caution">综合精读已暂停，暂时无法生成或重试。</p>}
     {!parseId&&<p>请先完成左侧论文结构解析。</p>}
-    {!config.has_saved_key&&config.uses_default_model&&!edit&&<p className="reading-caution">尚未配置 API 密钥。点击上方「模型配置」可直接输入密钥并加密保存，无需重启软件。</p>}
-    {edit&&<form className="reading-settings" onSubmit={saveSettings}>
-      <label>快捷服务预设
-        <select aria-label="模型预设" value="" onChange={e=>{const p=presets.find(x=>x.label===e.target.value);if(p)setDraft(d=>({...d,endpoint:p.endpoint,model:p.model}))}}>
-          <option value="">选择常用服务自动填入…</option>
-          {presets.map(p=><option key={p.label} value={p.label}>{p.label} ({p.model})</option>)}
-        </select>
-      </label>
-      <label>完整生成端点<input type="url" required placeholder="https://api.deepseek.com/chat/completions" value={draft.endpoint} onChange={e=>setDraft(c=>({...c,endpoint:e.target.value}))}/></label>
-      <label>模型名称<input required value={draft.model} onChange={e=>setDraft(c=>({...c,model:e.target.value}))}/></label>
-      <label>API 密钥（Windows DPAPI 本机加密存储）
-        <input type="password" autoComplete="off" placeholder={config.has_saved_key?`已保存密钥 (${config.masked_key})，留空保持不变`:'粘贴 sk-... 密钥，保存即生效'} value={apiKey} onChange={e=>setApiKey(e.target.value)}/>
-      </label>
-      <label className="checkbox-inline"><input type="checkbox" checked={!!draft.use_system_proxy} onChange={e=>setDraft(c=>({...c,use_system_proxy:e.target.checked}))}/> 跟随 Windows 系统代理（访问海外模型或 arXiv 时建议勾选）</label>
-      <details><summary>高级：环境变量凭据名</summary>
-        <label>环境变量名（可选）<input placeholder="PAPERMIND_MODEL_API_KEY" value={draft.key_env} onChange={e=>setDraft(c=>({...c,key_env:e.target.value}))}/></label>
-      </details>
-      <div className="reading-actions">
-        <button type="submit" className="primary" disabled={busy||testing}>保存模型配置</button>
-        <button type="button" disabled={busy||testing} onClick={()=>void testConnection()}>{testing?'测试中…':'测试连接'}</button>
-        {config.has_saved_key&&<button type="button" disabled={busy||testing} onClick={()=>void clearSavedKey()}>清除密钥</button>}
-      </div>
-    </form>}
+    {!config.has_saved_key&&config.uses_default_model&&<p className="reading-caution">尚未配置 API 密钥，请先点击右上角「⚙ 偏好设置」统一配置全局大模型。</p>}
     {error&&<p role="alert" className="error">{error}</p>}{notice&&<p role="status" className="notice">{notice}</p>}
     {active&&<div className="reading-progress"><p role="status">{statuses[active.status]} · {active.checkpoint?.message||'等待 Worker'}</p>
       {active.checkpoint?.stages&&<ol>{Object.entries(labels).map(([id,name])=><li key={id}>{name} · {stages[active.checkpoint!.stages![id]]||'等待'}</li>)}</ol>}

@@ -111,17 +111,10 @@ export function NotesPanel({paperId,fileId,parseId,messageId,onClose,onLocate}:{
           <p>自动生成与论文标题同名的 <code>{rev.snapshot.metadata.title||'未命名论文'}.md</code>，公式已规范化为标准 <code>$$...$$</code> 与 <code>$...$</code>，再次同步原地更新不破坏双链，支持 OneDrive/iCloud 同步库。</p>
           <div className="notes-toolbar">
             <button type="button" className="primary" disabled={dirty||busy||!vault.configured} onClick={()=>void work(()=>syncObsidian(false))}>
-              {vault.configured?'同步同名笔记到 Obsidian':'请先在下方配置 Obsidian 库目录'}
+              {vault.configured?'同步同名笔记到 Obsidian':'请先在「⚙ 全局偏好设置」配置 Obsidian 库目录'}
             </button>
-            <label className="checkbox-inline"><input type="checkbox" checked={bundlePdf} onChange={e=>setBundlePdf(e.target.checked)}/> 同时附带拷贝原始 PDF 到 _resources</label>
+            <small>{vault.configured?`当前同步路径：${vault.root}/${vault.subdir}${bundlePdf?'（附带离线 PDF）':''} · 可在「⚙ 全局偏好设置」修改`:'尚未配置 Obsidian Vault 目录，请在主界面或阅读器右上角「⚙ 偏好设置 → Obsidian 知识库」统一设置。'}</small>
           </div>
-          <details open={!vault.configured}><summary>Obsidian 库（Vault）目录设置 {vault.configured?`· 当前：${vault.root}/${vault.subdir}`:'· 未配置'}</summary>
-            <div className="notes-toolbar">
-              <label>Vault 根目录（本地绝对路径）<input aria-label="Vault根目录" placeholder="例如 D:\Obsidian\MyResearchVault" value={vault.root} onChange={e=>setVault(v=>({...v,root:e.target.value}))}/></label>
-              <label>存放子文件夹<input aria-label="Vault输出子目录" placeholder="PaperMind" value={vault.subdir} onChange={e=>setVault(v=>({...v,subdir:e.target.value}))}/></label>
-              <button type="button" disabled={busy} onClick={()=>void work(async()=>{await noteApi('/vault-settings/validate',vault);setVault(await noteApi('/vault-settings',{...vault,expected_revision:vault.revision}));setStatus('Obsidian 库目录已验证并保存')})}>验证并保存库目录</button>
-            </div>
-          </details>
         </section>
 
         <div className="notes-toolbar">

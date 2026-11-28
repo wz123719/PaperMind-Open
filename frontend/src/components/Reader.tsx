@@ -351,10 +351,6 @@ export function Reader({paper,onBack}:{paper:Paper;onBack:()=>void}){
         {!activeStructure&&!busy&&<div className="parse-callout">
           <p>尚未解析结构。启动解析后可解锁章节导航、AI 精读、全文双语翻译与跨语言问答。</p>
           <div className="parse-controls">
-            <select aria-label="解析模式" value={mode} onChange={e=>setMode(e.target.value)}>
-              <option value="docling">Docling 深度解析（含章节/表格/公式）</option>
-              <option value="native">快速原生提取（无需模型，秒级完成）</option>
-            </select>
             <button className="primary" disabled={submitting} onClick={()=>void parse(false)}>立即启动解析</button>
           </div>
         </div>}
@@ -365,10 +361,8 @@ export function Reader({paper,onBack}:{paper:Paper;onBack:()=>void}){
         </nav> : activeStructure&&<p>当前解析模式未提取到独立章节标题。</p>}
 
         <details className="paper-parse-controls" open={busy} onToggle={e=>setParseOpen((e.currentTarget as HTMLDetailsElement).open)}>
-          <summary>解析设置与全文查找</summary>
+          <summary>解析管理与全文查找</summary>
           <div className="parse-controls">
-            <select aria-label="解析模式" value={mode} onChange={e=>setMode(e.target.value)}><option value="docling">Docling 结构解析</option><option value="native">快速原生模式</option></select>
-            <label style={{fontSize:12}}><input aria-label="公式增强" type="checkbox" checked={formulas} disabled={mode!=='docling'} onChange={e=>setFormulas(e.target.checked)}/> 视觉公式识别 (CodeFormulaV2)</label>
             <button className="primary" disabled={busy||submitting} onClick={()=>void parse(false)}>启动解析</button>
             <button disabled={busy||submitting} onClick={()=>void parse(true)}>重新解析</button>
           </div>
@@ -381,8 +375,7 @@ export function Reader({paper,onBack}:{paper:Paper;onBack:()=>void}){
             </div>
           </div>}
           {paper.arxiv_id&&<div className="parse-job">
-            <label style={{fontSize:12}}><input aria-label="源文件优先" type="checkbox" checked={sourcePreferred} disabled={mode!=='docling'} onChange={e=>setSourcePreferred(e.target.checked)}/> 优先对齐 arXiv LaTeX 源码（100% 精确公式）</label>
-            <p>{source?.status==='available'?`已绑定源码 v${source.arxiv_version}`:'可下载对应版本 TeX 源码提升公式与表格精度'}</p>
+            <p>{source?.status==='available'?`已绑定 arXiv TeX 源码 v${source.arxiv_version}`:'可获取对应版本 arXiv TeX 源码以提升公式与表格精度'}</p>
             <button disabled={!paper.files.find(f=>f.id===fid)?.arxiv_version||!!sourceJob&&['queued','running'].includes(sourceJob.status)} onClick={()=>void fetchSource()}>获取 TeX 源码</button>
           </div>}
           {runs.length>1&&<label>历史解析版本 <select aria-label="解析运行历史" value={target||''} onChange={e=>{if(leaveTranslation())setViewRun(e.target.value||null)}}><option value="">最新成功结果</option>{runs.map(r=><option key={r.id} value={r.id} disabled={r.status!=='succeeded'}>{r.parser} · {r.status} · {r.id.slice(0,8)}</option>)}</select></label>}
