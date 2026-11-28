@@ -123,6 +123,8 @@ def launch_desktop(port: int | None = None, check_only: bool = False, no_window:
 
         app_proc = None
         if not no_window:
+            version_tag = int(dist.stat().st_mtime)
+            app_url = f'{url}/?v={version_tag}'
             edge = find_edge_binary()
             if edge:
                 profile = ROOT / 'storage' / 'desktop-webview-profile'
@@ -130,7 +132,7 @@ def launch_desktop(port: int | None = None, check_only: bool = False, no_window:
                 app_proc = subprocess.Popen(
                     [
                         edge,
-                        f'--app={url}/',
+                        f'--app={app_url}',
                         f'--user-data-dir={profile}',
                         '--window-size=1440,920',
                         '--no-first-run',
@@ -140,7 +142,7 @@ def launch_desktop(port: int | None = None, check_only: bool = False, no_window:
                     stderr=subprocess.DEVNULL,
                 )
             else:
-                webbrowser.open(url + '/')
+                webbrowser.open(app_url)
 
         while True:
             if server.poll() is not None or worker.poll() is not None:

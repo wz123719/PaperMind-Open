@@ -101,7 +101,13 @@ function App(){
       <div className="aside-bottom"><i/> 本地存储 · 隐私安全<small>独立科研桌面工作台</small></div>
     </aside>
     <main>
-      <div className="topline"><span>工作空间 / 论文库</span><span className="badge">本地优先 · Obsidian 联动</span></div>
+      <div className="topline">
+        <span>工作空间 / 论文库</span>
+        <div style={{display:'flex',alignItems:'center',gap:10}}>
+          <span className="badge">本地优先 · Obsidian 联动</span>
+          <button type="button" onClick={()=>{setSettingsTab('parsing');setSettingsOpen(true)}} style={{padding:'5px 12px',fontSize:12.5,fontWeight:600}}>⚙ 全局偏好设置</button>
+        </div>
+      </div>
       {overview&&!overview.llm.has_saved_key&&!overview.llm.key_env&&<div className="notice" style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,flexWrap:'wrap'}}>
         <span>首次使用建议先完成一次全局偏好设置（解析引擎、大模型 API 密钥、Obsidian 路径）。</span>
         <button type="button" className="primary" onClick={()=>{setSettingsTab('llm');setSettingsOpen(true)}}>⚙ 立即配置</button>

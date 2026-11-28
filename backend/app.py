@@ -324,4 +324,15 @@ if os.getenv('PAPERMIND_SERVE_DIST') == '1':
     from .db import ROOT as _APP_ROOT
     _dist = _APP_ROOT / 'frontend' / 'dist'
     if _dist.is_dir():
+        _index = _dist / 'index.html'
+        _no_cache = {'Cache-Control': 'no-store, no-cache, must-revalidate', 'Pragma': 'no-cache', 'Expires': '0'}
+
+        @app.get('/', include_in_schema=False)
+        def _serve_index():
+            return FileResponse(_index, media_type='text/html; charset=utf-8', headers=_no_cache)
+
+        @app.get('/index.html', include_in_schema=False)
+        def _serve_index_html():
+            return FileResponse(_index, media_type='text/html; charset=utf-8', headers=_no_cache)
+
         app.mount('/', StaticFiles(directory=str(_dist), html=True), name='frontend-dist')
