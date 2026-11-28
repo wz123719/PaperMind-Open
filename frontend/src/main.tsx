@@ -95,17 +95,17 @@ function App(){
     <aside>
       <div className="brand"><span className="logo">P</span> PaperMind</div>
       <span className="workspace-label">RESEARCH DESKTOP</span>
-      <button type="button" className="nav-item" style={{width:'100%',textAlign:'left',border:'none',cursor:'pointer'}}>▤　论文库 <span>{papers.length}</span></button>
-      <button type="button" className="nav-item" style={{width:'100%',textAlign:'left',border:'none',cursor:'pointer',marginTop:6,background:'transparent'}} onClick={()=>setNotesOpen(true)}>✎　知识笔记库</button>
-      <button type="button" className="nav-item" style={{width:'100%',textAlign:'left',border:'none',cursor:'pointer',marginTop:6,background:'transparent'}} onClick={()=>{setSettingsTab('parsing');setSettingsOpen(true)}}>⚙　全局偏好设置</button>
-      <div className="aside-bottom"><i/> 本地存储 · 隐私安全<small>独立科研桌面工作台</small></div>
+      <button type="button" className="nav-item active">▤　论文库 <span>{papers.length}</span></button>
+      <button type="button" className="nav-item" onClick={()=>setNotesOpen(true)}>✎　知识笔记库</button>
+      <button type="button" className="nav-item" onClick={()=>{setSettingsTab('parsing');setSettingsOpen(true)}}>⚙　全局偏好设置</button>
+      <div className="aside-bottom"><i/> 本地存储 · 隐私安全<small>Apple Liquid Glass 桌面工作台</small></div>
     </aside>
     <main>
       <div className="topline">
         <span>工作空间 / 论文库</span>
-        <div style={{display:'flex',alignItems:'center',gap:10}}>
+        <div className="topline-right">
           <span className="badge">本地优先 · Obsidian 联动</span>
-          <button type="button" onClick={()=>{setSettingsTab('parsing');setSettingsOpen(true)}} style={{padding:'5px 12px',fontSize:12.5,fontWeight:600}}>⚙ 全局偏好设置</button>
+          <button type="button" onClick={()=>{setSettingsTab('parsing');setSettingsOpen(true)}}>⚙ 全局偏好设置</button>
         </div>
       </div>
       {overview&&!overview.llm.has_saved_key&&!overview.llm.key_env&&<div className="notice" style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,flexWrap:'wrap'}}>
@@ -114,14 +114,17 @@ function App(){
       </div>}
       {settingsOpen&&<SettingsModal initialTab={settingsTab} onClose={()=>setSettingsOpen(false)} onSaved={ov=>setOverview(ov)}/>}
       <section className="heading">
-        <div><span className="eyebrow">YOUR RESEARCH, IN ONE PLACE</span><h1>论文库</h1><p>导入论文、深度精读、公式还原、一键沉淀同名 Obsidian 笔记。</p></div>
-        <div className="counts"><strong>{papers.length}</strong><span>篇论文</span><b>{active}</b><span>项导入中</span></div>
+        <div><span className="eyebrow">YOUR RESEARCH, IN ONE PLACE</span><h1>论文库</h1><p>导入论文、深度精读、公式还原、划句高亮并一键沉淀同名 Obsidian 笔记。</p></div>
+        <div className="counts">
+          <div className="stat-pill"><strong>{papers.length}</strong><span>篇论文</span></div>
+          {active>0&&<div className="stat-pill"><b>{active}</b><span>项导入中</span></div>}
+        </div>
       </section>
       <section className={'import-panel'+(dragging?' drag-active':'')}
         onDragOver={e=>{e.preventDefault();setDragging(true)}}
         onDragLeave={()=>setDragging(false)}
         onDrop={e=>{e.preventDefault();setDragging(false);const files=Array.from(e.dataTransfer.files).filter(f=>f.name.toLowerCase().endsWith('.pdf'));files.forEach(f=>void upload(f))}}>
-        <div><h2>添加研究论文</h2><p>支持直接拖拽 PDF 到此处，或输入 arXiv 编号/链接</p></div>
+        <div><h2>添加研究论文</h2><p>支持直接拖拽 PDF 到此处，或输入 arXiv 编号 / 链接导入</p></div>
         <div className="import-controls">
           <label className={'upload button '+(uploading?'disabled':'')}>{uploading?'正在上传…':'＋ 选择或拖拽 PDF'}
             <input aria-label="上传 PDF" type="file" accept=".pdf,application/pdf" multiple disabled={uploading} onChange={e=>{const fs=Array.from(e.target.files||[]);fs.forEach(f=>void upload(f));e.target.value=''}}/>
@@ -134,9 +137,28 @@ function App(){
       {message&&<div role="status" className="notice">{message}</div>}{error&&<div role="alert" className="error">{error}</div>}
       <div className="section-title">
         <h2>全部论文 <span>{filtered.length}</span></h2>
-        <input aria-label="搜索论文库" placeholder="搜索标题、作者、arXiv 或 DOI…" value={search} onChange={e=>setSearch(e.target.value)} style={{maxWidth:280,padding:'6px 10px',borderRadius:8,border:'1px solid #d5ded8'}}/>
+        <input className="library-search" aria-label="搜索论文库" placeholder="搜索标题、作者、arXiv 或 DOI…" value={search} onChange={e=>setSearch(e.target.value)}/>
       </div>
-      {filtered.length===0?<div className="empty"><div>▤</div><h3>{kw?'未找到匹配的论文':'你的第一篇论文，从这里开始'}</h3><p>{kw?'请尝试更换关键词。':'拖拽本地 PDF 或粘贴 arXiv 链接，建立自己的本地研究库。'}</p></div>:<div className="paper-list">{filtered.map(p=><div className="paper-card" role="button" tabIndex={0} key={p.id} onClick={()=>{sessionStorage.setItem('paper-reader',p.id);setSelected(p)}} onKeyDown={e=>{if(e.key==='Enter'){sessionStorage.setItem('paper-reader',p.id);setSelected(p)}}}><div className="file-icon">PDF</div><div className="paper-info"><h3>{p.title||'未命名论文'}</h3><p>{p.authors?.join(' · ')||'作者待补充'}{p.year?` · ${p.year}`:''}</p><small>{p.arxiv_id?`arXiv:${p.arxiv_id}`:p.doi?`DOI:${p.doi}`:'本地 PDF'} · {p.files[0]?.pages||0} 页 · {p.files.length} 个版本</small></div><div className="reading-actions"><span className="read-link">进入精读 →</span><button type="button" title="删除论文" onClick={e=>void removePaper(e,p)} style={{padding:'4px 8px',fontSize:12}}>删除</button></div></div>)}</div>}
+      {filtered.length===0?<div className="empty"><div>▤</div><h3>{kw?'未找到匹配的论文':'你的第一篇论文，从这里开始'}</h3><p>{kw?'请尝试更换关键词。':'拖拽本地 PDF 或粘贴 arXiv 链接，建立自己的本地研究库。'}</p></div>:<div className="paper-list">{filtered.map(p=><article className="paper-card" role="button" tabIndex={0} key={p.id} onClick={()=>{sessionStorage.setItem('paper-reader',p.id);setSelected(p)}} onKeyDown={e=>{if(e.key==='Enter'){sessionStorage.setItem('paper-reader',p.id);setSelected(p)}}}>
+        <div className="paper-card-top">
+          <div className="file-icon">PDF</div>
+          <div className="paper-info">
+            <h3 title={p.title||''}>{p.title||'未命名论文'}</h3>
+            <p>{p.authors?.join(' · ')||'作者待补充'}{p.year?` · ${p.year}`:''}</p>
+          </div>
+        </div>
+        <div className="paper-card-footer">
+          <div className="paper-meta-pills">
+            <span className={p.arxiv_id?'paper-pill accent':'paper-pill'}>{p.arxiv_id?`arXiv:${p.arxiv_id}`:p.doi?`DOI:${p.doi}`:'本地 PDF'}</span>
+            <span className="paper-pill">{p.files[0]?.pages||0} 页</span>
+            {p.files.length>1&&<span className="paper-pill">{p.files.length} 个版本</span>}
+          </div>
+          <div className="paper-card-actions">
+            <span className="read-link">进入精读 →</span>
+            <button type="button" className="card-delete-btn" title="删除论文" onClick={e=>void removePaper(e,p)}>删除</button>
+          </div>
+        </div>
+      </article>)}</div>}
       {jobs.length>0&&<><div className="section-title"><h2>导入任务</h2><span>多通道并发</span></div><div className="job-list">{jobs.map(j=><div className="job" key={j.id}><span className={'status '+j.status}>{({queued:'排队中',running:'导入中',succeeded:'已完成',failed:'失败',cancelled:'已取消'} as Record<string,string>)[j.status]||j.status}</span><div><strong>arXiv:{j.payload.canonical}</strong><p>{j.status==='succeeded'?'PDF 已保存':(j.error||j.checkpoint?.message||'等待处理')}</p><small>尝试 {j.attempts}/{j.max_attempts}</small></div>{j.status==='failed'&&<button onClick={()=>void retry(j.id)}>重试</button>}{['queued','running'].includes(j.status)&&<button onClick={()=>void cancelImport(j.id)}>取消</button>}</div>)}</div></>}
     </main>
   </div>;

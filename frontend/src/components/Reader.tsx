@@ -33,6 +33,7 @@ type SearchHit={text:string;page_label:string;regions:Region[]};
 
 export function Reader({paper,onBack}:{paper:Paper;onBack:()=>void}){
   const [readerMode,setReaderMode]=useState<ReaderMode>('bilingual');
+  const [bilingualLayout,setBilingualLayout]=useState<'stacked'|'side'>(()=>sessionStorage.getItem('reader-bilingual-layout')==='side'?'side':'stacked');
   const [selectedSection,setSelectedSection]=useState<string|null>(null);
   const [translationDirty,setTranslationDirty]=useState(false);
   function leaveTranslation(){return !translationDirty||window.confirm('译文有未保存修改，确定放弃这些修改？')}
@@ -88,6 +89,7 @@ export function Reader({paper,onBack}:{paper:Paper;onBack:()=>void}){
     setHlColor(p.default_highlight_color);
     setSettingsVersion(v=>v+1);
   }
+  useEffect(()=>{sessionStorage.setItem('reader-bilingual-layout',bilingualLayout)},[bilingualLayout]);
   useEffect(()=>{if(showReading)sessionStorage.setItem('reader-side-'+paper.id,sideMode);else sessionStorage.removeItem('reader-side-'+paper.id)},[showReading,sideMode,paper.id]);
   useEffect(()=>{if(fid)sessionStorage.setItem('reader-file-'+paper.id,fid)},[fid,paper.id]);
   useEffect(()=>{if(structure?.run.paper_file_id===fid&&structure.run.id===(viewRun||current))sessionStorage.setItem('reader-run-'+fid,structure.run.id)},[structure,fid,viewRun,current]);
@@ -325,10 +327,16 @@ export function Reader({paper,onBack}:{paper:Paper;onBack:()=>void}){
         </div>
       </header>
       <div className="reader-subbar">
-        <nav className="paper-modes" aria-label="阅读模式">
-          {readerModes.map(m=><button key={m.id} type="button" aria-pressed={displayMode===m.id}
-            disabled={m.id!=='original'&&!activeStructure} onClick={()=>{if(m.id!=='original'||leaveTranslation())setReaderMode(m.id)}}>{m.label}</button>)}
-        </nav>
+        <div className="reader-mode-group">
+          <nav className="paper-modes" aria-label="阅读模式">
+            {readerModes.map(m=><button key={m.id} type="button" aria-pressed={displayMode===m.id}
+              disabled={m.id!=='original'&&!activeStructure} onClick={()=>{if(m.id!=='original'||leaveTranslation())setReaderMode(m.id)}}>{m.label}</button>)}
+          </nav>
+          {displayMode==='bilingual'&&<div className="bilingual-layout-toggle" role="group" aria-label="双语对照排版">
+            <button type="button" aria-pressed={bilingualLayout==='stacked'} onClick={()=>setBilingualLayout('stacked')}>上下对照</button>
+            <button type="button" aria-pressed={bilingualLayout==='side'} onClick={()=>setBilingualLayout('side')}>左右并排</button>
+          </div>}
+        </div>
         {displayMode==='original'&&<div className="reader-tools">
           {paper.files.length>1&&<select aria-label="文件版本" value={fid} onChange={e=>{if(leaveTranslation())setFid(e.target.value)}}>{paper.files.map(f=><option key={f.id} value={f.id}>v{f.version}{f.arxiv_version?` (arXiv v${f.arxiv_version})`:''}</option>)}</select>}
           <button type="button" disabled={!doc||page<=1} onClick={()=>setPage(p=>p-1)} title="上一页 (←)">◀</button>
@@ -431,7 +439,7 @@ export function Reader({paper,onBack}:{paper:Paper;onBack:()=>void}){
           </div>
         </div>}
         {displayMode!=='original'&&activeStructure&&<TranslationPanel key={activeStructure.run.id} structure={activeStructure} paperId={paper.id} settingsVersion={settingsVersion}
-          bilingual={displayMode==='bilingual'} highlights={highlights} onSelectPassage={sel=>{setPassageSelection(sel);if(sel)setActiveHighlightId(null)}} onHighlightClick={id=>setActiveHighlightId(id)} onLocate={showOriginal} onDirty={setTranslationDirty}/>}
+          bilingual={displayMode==='bilingual'} bilingualLayout={bilingualLayout} highlights={highlights} onSelectPassage={sel=>{setPassageSelection(sel);if(sel)setActiveHighlightId(null)}} onHighlightClick={id=>setActiveHighlightId(id)} onLocate={showOriginal} onDirty={setTranslationDirty}/>}
         {displayMode==='original'&&<div className="reading-area">
           {located&&<div className="located" role="status"><span>定位：{located.slice(0,90)}</span>{regions.map((r,n)=><button key={n} onClick={()=>setPage(r.page_index+1)}>区域 {n+1} · 第 {r.page_index+1} 页</button>)}<button onClick={()=>{setRegions([]);setLocated('')}}>清除定位</button></div>}
           <div className="pdf-stage">{doc?<PdfPage doc={doc} page={page} scale={scale} rotation={rotation} regions={regions} highlights={highlights} activeHighlightId={activeHighlightId} onHighlightClick={id=>setActiveHighlightId(id)} onSelection={setSelection} identity={{paper_file_id:fid,parse_run_id:target||'',file_sha256:paper.files.find(f=>f.id===fid)?.sha256||''}}/>:<p>正在加载 PDF…</p>}</div>

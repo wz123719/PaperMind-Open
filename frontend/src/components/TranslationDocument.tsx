@@ -13,8 +13,8 @@ const gaps: Record<string, string> = {
   needs_review: '待复核 · 显示原文',
 };
 
-export const TranslationDocument = memo(function TranslationDocument({blocks, results, parseId, status, bilingual=false, highlights=[], onSelectPassage, onHighlightClick, onEdit, onLocate}:{
-  blocks:Block[]; results:TranslationResult[]; parseId:string; status:string; bilingual?:boolean;
+export const TranslationDocument = memo(function TranslationDocument({blocks, results, parseId, status, bilingual=false, bilingualLayout='stacked', highlights=[], onSelectPassage, onHighlightClick, onEdit, onLocate}:{
+  blocks:Block[]; results:TranslationResult[]; parseId:string; status:string; bilingual?:boolean; bilingualLayout?:'stacked'|'side';
   highlights?:Highlight[]; onSelectPassage?:(sel:PassageSelection|null)=>void; onHighlightClick?:(id:string|null)=>void;
   onEdit:(id:string)=>void; onLocate?:(regions:Block['regions'], label:string)=>void;
 }) {
@@ -42,7 +42,7 @@ export const TranslationDocument = memo(function TranslationDocument({blocks, re
     onSelectPassage({text: text.slice(0, 4000), page_index: pageIndex, regions});
   }
 
-  return <article className="translation-document" aria-label="连续译文" onMouseUp={handleSelection} onKeyUp={handleSelection}>
+  return <article className={`translation-document${bilingual&&bilingualLayout==='side'?' side-by-side':''}`} aria-label="连续译文" onMouseUp={handleSelection} onKeyUp={handleSelection}>
     {ordered.map(block => {
       const result = byBlock.get(block.id);
       const translated = result?.status === 'translated' || result?.manual;
@@ -67,31 +67,43 @@ export const TranslationDocument = memo(function TranslationDocument({blocks, re
       const heading = ['title','heading','section_header'].includes(block.type);
       const page = block.regions[0]?.page_index;
       const eqHtml = isEquation ? renderMathHtml(text, true) : null;
-      return <section className={`translation-passage${isEquation?' equation-passage':''}`} key={block.id} id={`reader-block-${block.id}`} data-block-id={block.id}>
-        {bilingual && translated && !heading && !isFigure && !tableRows.size && block.text && <div className="parallel-original" lang="en">
-          <small>Original{page===undefined?'':` · Page ${page+1}`}</small><p><InlineRichText text={block.text} highlights={highlights} onHighlightClick={onHighlightClick}/></p>
-        </div>}
-        {bilingual && translated && !heading && !isFigure && <small className="parallel-label">中文译文{page===undefined?'':` · 第 ${page+1} 页`}</small>}
-        {gap && !isEquation && !isFigure && !isAlgorithm && <small className="translation-gap">{gap}</small>}
-        {assets.map(asset => <img key={asset} loading="lazy" alt={isEquation ? block.text : isAlgorithm ? '算法伪代码原图' : block.data.caption || '原文插图'}
-          src={`/api/v1/parse-runs/${encodeURIComponent(parseId)}/assets/${encodeURIComponent(asset)}`}/>)}
-        {!isAlgorithm && tableRows.size > 0 ? <div className="translation-table"><table><tbody>
-          {[...tableRows].sort(([a], [b]) => a-b).map(([row, cells]) => <tr key={row}>
-            {cells.sort((a,b) => a.column-b.column).map(cell => <td key={cell.column}
-              rowSpan={cell.row_span || 1} colSpan={cell.column_span || 1}>
-              {bilingual && translated && <span className="parallel-cell-original">{origCellMap.get(`${cell.row}:${cell.column}`)}</span>}
-              <InlineRichText text={cell.text}/>
-            </td>)}
-          </tr>)}
-        </tbody></table></div> : block.type === 'title' ? <h3>{bilingual?block.text:text}</h3>
-          : heading ? <h4>{bilingual?block.text:text}</h4>
-          : isEquation ? <div className="equation-block">
-              {eqHtml ? <div className="math-block" dangerouslySetInnerHTML={{__html: eqHtml}}/> : <pre>{text}</pre>}
-              <details><summary>LaTeX 公式源码</summary><pre>{text}</pre></details>
-            </div>
-          : isAlgorithm && assets.length ? <details><summary>算法伪代码文本</summary><pre>{text}</pre></details>
-          : isAlgorithm || ['code','table'].includes(block.type) ? <pre>{text}</pre>
-          : text && <p><InlineRichText text={text} highlights={highlights} onHighlightClick={onHighlightClick}/></p>}
+      const isParallelProse = bilingual && translated && !heading && !isFigure && !isEquation && !isAlgorithm && !tableRows.size && !['code','table'].includes(block.type) && !!block.text && !!text;
+      return <section className={`translation-passage${isEquation?' equation-passage':''}${isParallelProse?' parallel-prose':''}`} key={block.id} id={`reader-block-${block.id}`} data-block-id={block.id}>
+        {isParallelProse ? <div className="bilingual-pair">
+          <div className="parallel-original" lang="en">
+            <small>Original{page===undefined?'':` · Page ${page+1}`}</small>
+            <p><InlineRichText text={block.text} highlights={highlights} onHighlightClick={onHighlightClick}/></p>
+          </div>
+          <div className="parallel-translated">
+            <small className="parallel-label">中文译文{page===undefined?'':` · 第 ${page+1} 页`}</small>
+            <p><InlineRichText text={text} highlights={highlights} onHighlightClick={onHighlightClick}/></p>
+          </div>
+        </div> : <>
+          {bilingual && translated && !heading && !isFigure && !tableRows.size && block.text && <div className="parallel-original" lang="en">
+            <small>Original{page===undefined?'':` · Page ${page+1}`}</small><p><InlineRichText text={block.text} highlights={highlights} onHighlightClick={onHighlightClick}/></p>
+          </div>}
+          {bilingual && translated && !heading && !isFigure && <small className="parallel-label">中文译文{page===undefined?'':` · 第 ${page+1} 页`}</small>}
+          {gap && !isEquation && !isFigure && !isAlgorithm && <small className="translation-gap">{gap}</small>}
+          {assets.map(asset => <img key={asset} loading="lazy" alt={isEquation ? block.text : isAlgorithm ? '算法伪代码原图' : block.data.caption || '原文插图'}
+            src={`/api/v1/parse-runs/${encodeURIComponent(parseId)}/assets/${encodeURIComponent(asset)}`}/>)}
+          {!isAlgorithm && tableRows.size > 0 ? <div className="translation-table"><table><tbody>
+            {[...tableRows].sort(([a], [b]) => a-b).map(([row, cells]) => <tr key={row}>
+              {cells.sort((a,b) => a.column-b.column).map(cell => <td key={cell.column}
+                rowSpan={cell.row_span || 1} colSpan={cell.column_span || 1}>
+                {bilingual && translated && <span className="parallel-cell-original">{origCellMap.get(`${cell.row}:${cell.column}`)}</span>}
+                <InlineRichText text={cell.text}/>
+              </td>)}
+            </tr>)}
+          </tbody></table></div> : block.type === 'title' ? <h3>{bilingual?block.text:text}</h3>
+            : heading ? <h4>{bilingual?block.text:text}</h4>
+            : isEquation ? <div className="equation-block">
+                {eqHtml ? <div className="math-block" dangerouslySetInnerHTML={{__html: eqHtml}}/> : <pre>{text}</pre>}
+                <details><summary>LaTeX 公式源码</summary><pre>{text}</pre></details>
+              </div>
+            : isAlgorithm && assets.length ? <details><summary>算法伪代码文本</summary><pre>{text}</pre></details>
+            : isAlgorithm || ['code','table'].includes(block.type) ? <pre>{text}</pre>
+            : text && <p><InlineRichText text={text} highlights={highlights} onHighlightClick={onHighlightClick}/></p>}
+        </>}
         {gap && !isEquation && !isFigure && !isAlgorithm && <button type="button" className="translation-gap-action" onClick={() => onEdit(block.id)}>查看此处</button>}
         {bilingual && page!==undefined && onLocate && <button type="button" className="parallel-locate" onClick={()=>onLocate(block.regions,block.text || '原文位置')}>原文定位 · 第 {page+1} 页</button>}
       </section>;

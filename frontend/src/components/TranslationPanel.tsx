@@ -14,7 +14,7 @@ function isFullTranslation(run:Run, blockCount:number) {
     (!run.snapshot.scope && run.snapshot.blocks.length === blockCount));
 }
 
-export function TranslationPanel({structure,paperId,settingsVersion=0,onLocate,onDirty,bilingual=false,highlights=[],onSelectPassage,onHighlightClick}:{structure:Structure;paperId:string;settingsVersion?:number;onLocate:(r:Region[],label:string)=>void;onDirty:(value:boolean)=>void;bilingual?:boolean;highlights?:Highlight[];onSelectPassage?:(sel:PassageSelection|null)=>void;onHighlightClick?:(id:string|null)=>void}){
+export function TranslationPanel({structure,paperId,settingsVersion=0,onLocate,onDirty,bilingual=false,bilingualLayout='stacked',highlights=[],onSelectPassage,onHighlightClick}:{structure:Structure;paperId:string;settingsVersion?:number;onLocate:(r:Region[],label:string)=>void;onDirty:(value:boolean)=>void;bilingual?:boolean;bilingualLayout?:'stacked'|'side';highlights?:Highlight[];onSelectPassage?:(sel:PassageSelection|null)=>void;onHighlightClick?:(id:string|null)=>void}){
   const [runs,setRuns]=useState<RunItem[]>([]),[run,setRun]=useState<Run|null>(null),[selected,setSelected]=useState('');
   const [gloss,setGloss]=useState<Glossary>({id:null,entries:[]}),[terms,setTerms]=useState<Term[]>([]);
   const [newEn,setNewEn]=useState(''),[newZh,setNewZh]=useState(''),[newLock,setNewLock]=useState(true);
@@ -136,7 +136,7 @@ export function TranslationPanel({structure,paperId,settingsVersion=0,onLocate,o
           {!['queued','running'].includes(run.status)&&run.blocks.some(b=>b.result.status==='failed')&&<button type="button" disabled={dirty} onClick={()=>void work(()=>submit(run.blocks.filter(b=>b.result.status==='failed').map(b=>b.block_id),'blocks',true,run.snapshot.task))}>重试失败块</button>}
         </div>
         {run.snapshot.task==='translation'&&<>
-          <TranslationDocument blocks={run.snapshot.blocks} results={run.blocks} parseId={parseId} status={run.status} bilingual={bilingual} highlights={highlights} onSelectPassage={onSelectPassage} onHighlightClick={onHighlightClick} onLocate={onLocate} onEdit={id=>{
+          <TranslationDocument blocks={run.snapshot.blocks} results={run.blocks} parseId={parseId} status={run.status} bilingual={bilingual} bilingualLayout={bilingualLayout} highlights={highlights} onSelectPassage={onSelectPassage} onHighlightClick={onHighlightClick} onLocate={onLocate} onEdit={id=>{
             if(dirty||working.current)return;
             accept(run,id);
             if(editor.current){editor.current.open=true;editor.current.scrollIntoView({block:'start'});}

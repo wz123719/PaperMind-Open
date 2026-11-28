@@ -1,7 +1,260 @@
-.notes-workspace{position:fixed;inset:0;z-index:100;background:#f5f8f6;overflow:auto;padding:24px 4vw;color:#203e36}.notes-workspace header{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #d9e3dd;margin-bottom:18px}.notes-toolbar{display:flex;align-items:end;gap:14px;flex-wrap:wrap;margin:18px 0}.notes-workspace label{display:block;margin:10px 0}.notes-workspace select,.notes-workspace input:not([type=checkbox]){display:block;min-width:220px;max-width:90vw;padding:9px;border:1px solid #c9d8cd;border-radius:6px;background:white}.notes-workspace button{margin:5px;padding:9px 14px;border:1px solid #b8cec1;border-radius:6px;background:white;cursor:pointer}.notes-workspace button:disabled{opacity:.5;cursor:default}.notes-workspace details{padding:14px;margin:12px 0;background:white;border:1px solid #d8e3dc;border-radius:8px}.notes-workspace summary{cursor:pointer}.notes-workspace pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:460px;overflow:auto;background:#eef3ef;padding:14px;font:12px/1.7 Consolas,monospace}.note-editor-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}.note-editor-grid>textarea{min-height:370px;width:100%;resize:vertical;border:1px solid #b8cec1;padding:16px;font:14px/1.8 Consolas,monospace}.markdown-preview{padding:18px;background:white;border:1px solid #d9e3dd;border-radius:6px;overflow-wrap:anywhere}.markdown-preview p{white-space:pre-wrap}.markdown-preview table{border-collapse:collapse;width:100%;margin:15px 0}.markdown-preview th,.markdown-preview td{border:1px solid #c6d6cd;padding:9px;text-align:left}.markdown-preview img,.notes-workspace details img{display:block;max-width:100%;max-height:280px}.markdown-preview blockquote{border-left:3px solid #9bb8a5;padding-left:12px;color:#536c61}.note-math{background:#edf3ea;padding:3px 6px}.note-publish,.note-answer{margin-top:20px;padding:20px;border:1px solid #bfd2c5;background:#edf4ed;border-radius:8px}.note-list-line{margin:6px 0}@media(max-width:800px){.note-editor-grid{grid-template-columns:1fr}.notes-workspace{padding:15px}}
+/* PaperMind Knowledge Notes · Apple Liquid Glass Aesthetic */
+.notes-workspace {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  overflow: auto;
+  padding: 18px 3.2vw 40px;
+  color: var(--apple-ink, #1d1d1f);
+  background:
+    radial-gradient(circle at 12% 8%, rgba(196, 222, 255, 0.45) 0%, transparent 42%),
+    radial-gradient(circle at 88% 12%, rgba(215, 210, 255, 0.35) 0%, transparent 40%),
+    #eef2f8;
+}
 
-.note-operation-fields{border:0;padding:0;margin:0;min-inline-size:0}
+.note-operation-fields {
+  border: 0;
+  padding: 0;
+  margin: 0 auto;
+  max-width: 1440px;
+  min-inline-size: 0;
+}
 
-.notes-workspace .math-block { overflow-x: auto; padding: 10px 14px; margin: 10px 0; background: #f7faf8; border: 1px solid #dce6e0; border-radius: 8px; }
-.notes-workspace .callout { border-left: 4px solid #256f4e; background: #f3f8f5; padding: 10px 14px; border-radius: 6px; margin: 10px 0; }
-.notes-workspace .obsidian-wikilink { color: #256f4e; background: #ebf5ef; padding: 1px 5px; border-radius: 4px; }
+.notes-workspace header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  margin-bottom: 16px;
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(26px) saturate(190%);
+  -webkit-backdrop-filter: blur(26px) saturate(190%);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: 20px;
+  box-shadow: 0 8px 26px rgba(15, 28, 52, 0.07), inset 0 1px 0 #ffffff;
+}
+
+.notes-workspace header h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.notes-toolbar {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 14px 0;
+}
+
+.notes-workspace label {
+  display: block;
+  margin: 4px 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #3a4252;
+}
+
+.notes-workspace select,
+.notes-workspace input:not([type="checkbox"]) {
+  display: block;
+  min-width: 220px;
+  max-width: 90vw;
+  margin-top: 5px;
+  padding: 8px 12px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #1d1d1f;
+  font-size: 13px;
+}
+
+.notes-workspace button {
+  padding: 7px 14px;
+  border-radius: 999px;
+  font-size: 12.5px;
+}
+
+.notes-workspace details {
+  padding: 14px 18px;
+  margin: 14px 0;
+  background: rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(20px) saturate(175%);
+  -webkit-backdrop-filter: blur(20px) saturate(175%);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: 18px;
+  box-shadow: 0 4px 16px rgba(15, 28, 52, 0.05);
+}
+
+.notes-workspace summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 13px;
+  color: #2c3340;
+}
+
+.notes-workspace pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 460px;
+  overflow: auto;
+  background: #f5f7fb;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 12px;
+  padding: 14px;
+  font: 12.5px/1.7 var(--font-mono, Consolas, monospace);
+}
+
+.note-publish,
+.note-answer {
+  margin: 14px 0 18px;
+  padding: 18px 22px;
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(24px) saturate(185%);
+  -webkit-backdrop-filter: blur(24px) saturate(185%);
+  border: 1px solid rgba(255, 255, 255, 0.92);
+  border-radius: 20px;
+  box-shadow: 0 8px 26px rgba(15, 28, 52, 0.06), inset 0 1px 0 #ffffff;
+}
+
+.note-publish h3,
+.note-answer h3 {
+  margin: 0 0 6px;
+  font-size: 15.5px;
+  font-weight: 650;
+}
+
+.note-publish small {
+  color: #5b6576;
+  font-size: 12px;
+}
+
+.note-editor-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+  margin-top: 10px;
+}
+
+.note-editor-grid > textarea {
+  min-height: 420px;
+  width: 100%;
+  resize: vertical;
+  border: 1px solid rgba(255, 255, 255, 0.92);
+  border-radius: 18px;
+  padding: 18px 20px;
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(18px);
+  box-shadow: 0 6px 22px rgba(15, 28, 52, 0.05), inset 0 1px 0 #ffffff;
+  font: 13.5px/1.8 var(--font-mono, Consolas, monospace);
+  color: #1d1d1f;
+}
+
+.markdown-preview {
+  padding: 20px 24px;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.96);
+  border-radius: 18px;
+  box-shadow: 0 8px 24px rgba(15, 28, 52, 0.06), inset 0 1px 0 #ffffff;
+  overflow-wrap: anywhere;
+  line-height: 1.75;
+}
+
+.markdown-preview h1,
+.markdown-preview h2,
+.markdown-preview h3 {
+  letter-spacing: -0.015em;
+  color: #1d1d1f;
+}
+
+.markdown-preview p {
+  white-space: pre-wrap;
+  color: #242933;
+}
+
+.markdown-preview table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 14px 0;
+  font-size: 13px;
+}
+
+.markdown-preview th,
+.markdown-preview td {
+  border: 1px solid rgba(15, 23, 42, 0.09);
+  padding: 8px 10px;
+  text-align: left;
+}
+
+.markdown-preview img,
+.notes-workspace details img {
+  display: block;
+  max-width: 100%;
+  max-height: 280px;
+  border-radius: 10px;
+}
+
+.markdown-preview blockquote {
+  border-left: 3.5px solid #007aff;
+  background: rgba(0, 122, 255, 0.06);
+  padding: 10px 14px;
+  border-radius: 12px;
+  margin: 10px 0;
+  color: #2f3745;
+}
+
+.note-math {
+  background: #f3f6fb;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+
+.notes-workspace .math-block {
+  overflow-x: auto;
+  padding: 14px 16px;
+  margin: 12px 0;
+  background: #f5f7fb;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 14px;
+  text-align: center;
+}
+
+.notes-workspace .callout {
+  border-left: 4px solid #007aff;
+  background: rgba(235, 245, 255, 0.72);
+  padding: 11px 15px;
+  border-radius: 12px;
+  margin: 10px 0;
+}
+
+.notes-workspace .callout.callout-quote {
+  border-left-color: #f5b800;
+  background: rgba(255, 248, 220, 0.8);
+}
+
+.notes-workspace .obsidian-wikilink {
+  color: #007aff;
+  background: rgba(0, 122, 255, 0.1);
+  padding: 1px 6px;
+  border-radius: 6px;
+  font-weight: 550;
+}
+
+.note-list-line {
+  margin: 6px 0;
+}
+
+@media (max-width: 860px) {
+  .note-editor-grid {
+    grid-template-columns: 1fr;
+  }
+  .notes-workspace {
+    padding: 14px;
+  }
+}
